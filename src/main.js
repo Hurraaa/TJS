@@ -331,11 +331,12 @@ function setAction(name) {
   current = next;
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v6 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v7 · ' + msg; statusEl.className = cls; } };
 {
+  // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
-    'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/models/gltf/RobotExpressive/RobotExpressive.glb',
-    'https://unpkg.com/three@0.160.0/examples/models/gltf/RobotExpressive/RobotExpressive.glb',
+    'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/models/gltf/RobotExpressive/RobotExpressive.glb',
+    'https://raw.githack.com/mrdoob/three.js/r160/examples/models/gltf/RobotExpressive/RobotExpressive.glb',
   ];
   const loader = new GLTFLoader();
   const onLoad = (gltf) => {
@@ -404,20 +405,8 @@ const keys = {};
 addEventListener('keydown', (e) => { keys[e.code] = true; });
 addEventListener('keyup', (e) => { keys[e.code] = false; });
 
-// Kamera sürükleme — sadece tuval üzerinde başlayan dokunuş/fare döndürür
-let dragging = false, lastX = 0, lastY = 0, camPointer = null;
-renderer.domElement.addEventListener('pointerdown', (e) => {
-  if (camPointer !== null) return;            // ilk parmağı kameraya ata
-  camPointer = e.pointerId; dragging = true; lastX = e.clientX; lastY = e.clientY;
-});
-addEventListener('pointerup', (e) => { if (e.pointerId === camPointer) { dragging = false; camPointer = null; } });
-addEventListener('pointercancel', (e) => { if (e.pointerId === camPointer) { dragging = false; camPointer = null; } });
-addEventListener('pointermove', (e) => {
-  if (!dragging || e.pointerId !== camPointer) return;
-  camYaw -= (e.clientX - lastX) * 0.005;
-  camPitch = THREE.MathUtils.clamp(camPitch - (e.clientY - lastY) * 0.005, -0.2, 1.1);
-  lastX = e.clientX; lastY = e.clientY;
-});
+// GTA tarzı: kamerayı elle çevirme yok; karakteri takip edip otomatik arkasına geçer.
+// (Sadece yakınlaştırma manuel.)
 addEventListener('wheel', (e) => {
   camDist = THREE.MathUtils.clamp(camDist + e.deltaY * 0.01, 5, 22);
 }, { passive: true });
@@ -555,6 +544,14 @@ function update(dt) {
     parts.armR.rotation.x = sw * 0.7;
     const bob = Math.abs(Math.sin(walkPhase * 2)) * Math.min(1, speed2d / 5) * 0.08;
     parts.torso.position.y = 1.25 + bob;
+  }
+
+  // GTA tarzı otomatik kamera: hareket edince yumuşakça karakterin arkasına geç
+  if (moving && speed2d > 0.5) {
+    const targetYaw = facing - Math.PI;           // kamera, gidiş yönünün arkasında
+    let dy = targetYaw - camYaw;
+    dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    camYaw += dy * Math.min(1, dt * 2.2);
   }
 
   // kamera takip
