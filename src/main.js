@@ -216,6 +216,80 @@ setTimeOfDay(0.2);                             // varsayılan: sıcak ikindi
   }
 }
 
+// ---- Şelale (göle dökülür) --------------------------------------------
+const waterfallParts = [];
+{
+  const baseX = LAKE.x - LAKE.r + 6, baseZ = LAKE.z;
+  const lakeY = heightAt(LAKE.x, LAKE.z) + 0.15;
+  const fallH = 13;
+  const topY = lakeY + fallH;
+
+  // Kaya uçurum
+  for (let i = 0; i < 6; i++) {
+    const r = 3 + Math.random() * 2;
+    const rock = new THREE.Mesh(roughen(new THREE.DodecahedronGeometry(r, 0), r * 0.2), toon('#888d94'));
+    rock.position.set(baseX - 4 + (Math.random() - 0.5) * 3, lakeY + 1 + i * 2.3, baseZ + (Math.random() - 0.5) * 9);
+    rock.rotation.set(Math.random(), Math.random(), Math.random());
+    rock.castShadow = true; rock.receiveShadow = true; addOutline(rock, 0.06);
+    scene.add(rock);
+  }
+
+  // Akan su perdesi (animasyonlu shader)
+  const fallMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    uniforms: {
+      time: { value: 0 },
+      top: { value: new THREE.Color('#e3f4ff') },
+      bot: { value: new THREE.Color('#86c6e8') },
+    },
+    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `
+      varying vec2 vUv; uniform float time; uniform vec3 top; uniform vec3 bot;
+      float hash(float x){ return fract(sin(x * 91.17) * 43758.5453); }
+      void main(){
+        float lanes = floor(vUv.x * 9.0);
+        float speed = 1.3 + hash(lanes) * 0.9;
+        float flow = fract(vUv.y * 4.0 - time * speed + hash(lanes) * 5.0);
+        float streak = smoothstep(0.0, 0.5, flow) * smoothstep(1.0, 0.5, flow);
+        float body = 0.5 + streak * 0.5;
+        float edge = smoothstep(0.0, 0.12, vUv.x) * smoothstep(1.0, 0.88, vUv.x);
+        vec3 col = mix(bot, top, vUv.y);
+        col = mix(col, vec3(1.0), smoothstep(0.18, 0.0, vUv.y) * 0.85); // dip köpük
+        gl_FragColor = vec4(col, body * edge);
+      }`,
+  });
+  const fall = new THREE.Mesh(new THREE.PlaneGeometry(5.5, fallH), fallMat);
+  fall.position.set(baseX, lakeY + fallH / 2, baseZ);
+  fall.rotation.y = Math.PI / 2;            // perde göle bakar
+  scene.add(fall);
+  waterfallParts.push({ type: 'fall', mat: fallMat });
+
+  // Dip köpük halkası
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(1.4, 4.2, 28),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, depthWrite: false }));
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.set(baseX, lakeY + 0.07, baseZ);
+  scene.add(ring);
+  waterfallParts.push({ type: 'ring', mesh: ring });
+
+  // Buhar (mist) parçacıkları
+  const N = 70;
+  const pos = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) {
+    pos[i * 3] = baseX + (Math.random() - 0.5) * 4;
+    pos[i * 3 + 1] = lakeY + Math.random() * 4;
+    pos[i * 3 + 2] = baseZ + (Math.random() - 0.5) * 4;
+  }
+  const mistGeo = new THREE.BufferGeometry();
+  mistGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const mist = new THREE.Points(mistGeo, new THREE.PointsMaterial({
+    color: 0xffffff, size: 1.7, transparent: true, opacity: 0.3, depthWrite: false, sizeAttenuation: true,
+  }));
+  scene.add(mist);
+  waterfallParts.push({ type: 'mist', geo: mistGeo, base: lakeY });
+}
+
 // ---- Instanced doğa: çimen kümeleri -----------------------------------
 function scatterGrass(count = 4000) {
   const blade = new THREE.ConeGeometry(0.16, 1.1, 4);
@@ -528,7 +602,7 @@ function emote(name) {
   current = a;
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v13 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v14 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -812,6 +886,24 @@ function update(dt) {
 
   // Su dalgaları
   if (water) water.material.uniforms['time'].value += dt;
+
+  // Şelale
+  for (const wf of waterfallParts) {
+    if (wf.type === 'fall') {
+      wf.mat.uniforms.time.value += dt;
+    } else if (wf.type === 'ring') {
+      wf.mesh.material.opacity = 0.4 + Math.sin(elapsed * 4) * 0.12;
+      const s = 1 + Math.sin(elapsed * 4) * 0.06; wf.mesh.scale.set(s, s, s);
+    } else if (wf.type === 'mist') {
+      const p = wf.geo.attributes.position;
+      for (let i = 0; i < p.count; i++) {
+        let y = p.getY(i) + dt * 1.4;
+        if (y > wf.base + 5) y = wf.base;
+        p.setY(i, y);
+      }
+      p.needsUpdate = true;
+    }
+  }
 
   // Rüzgârda hafif salınım (ağaçlar + çalılar)
   elapsed += dt;
