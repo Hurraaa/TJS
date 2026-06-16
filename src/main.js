@@ -122,6 +122,7 @@ function roughen(geo, amount = 0.12) {
 
 // ---- Zemin (yumuşak tepeler) ------------------------------------------
 const WORLD = 260;
+const colliders = [];                          // {x, z, r} — katı engeller (çarpışma)
 function heightAt(x, z) {
   return Math.sin(x * 0.045) * 2.4 + Math.cos(z * 0.05) * 2.2
        + Math.sin((x + z) * 0.018) * 3.0
@@ -232,6 +233,7 @@ const waterfallParts = [];
     rock.rotation.set(Math.random(), Math.random(), Math.random());
     rock.castShadow = true; rock.receiveShadow = true; addOutline(rock, 0.06);
     scene.add(rock);
+    colliders.push({ x: rock.position.x, z: rock.position.z, r: r * 0.7 });
   }
 
   // Akan su perdesi (animasyonlu shader)
@@ -338,6 +340,38 @@ function scatterFlowers(color, count) {
 }
 ['#f7f3e8', '#ffd95e', '#ff8fb1', '#b48cff'].forEach((c) => scene.add(scatterFlowers(c, 110)));
 
+// ---- Kelebekler -------------------------------------------------------
+const butterflies = [];
+function makeButterfly(color) {
+  const g = new THREE.Group();
+  const wingGeo = new THREE.PlaneGeometry(0.5, 0.66);
+  wingGeo.translate(0.25, 0, 0);              // dönüş ekseni iç kenarda (gövde)
+  const mat = new THREE.MeshToonMaterial({ color, gradientMap: ramp, side: THREE.DoubleSide });
+  const wl = new THREE.Mesh(wingGeo, mat);
+  const wr = new THREE.Mesh(wingGeo, mat); wr.scale.x = -1;
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.5, 5), toon('#2b2320'));
+  body.rotation.x = Math.PI / 2;
+  g.add(wl, wr, body);
+  g.userData = { wl, wr };
+  return g;
+}
+const bflyColors = ['#ff8fb1', '#ffd95e', '#9ad0ff', '#ffffff', '#c79bff', '#ff9e5e'];
+for (let i = 0; i < 16; i++) {
+  const cx = (Math.random() - 0.5) * (WORLD - 60);
+  const cz = (Math.random() - 0.5) * (WORLD - 60);
+  const b = makeButterfly(bflyColors[i % bflyColors.length]);
+  scene.add(b);
+  butterflies.push({
+    g: b, cx, cz,
+    r: 3 + Math.random() * 7,
+    h: 1.6 + Math.random() * 2.6,
+    speed: 0.4 + Math.random() * 0.5,
+    phase: Math.random() * Math.PI * 2,
+    flapSpeed: 14 + Math.random() * 8,
+    flapPhase: Math.random() * Math.PI * 2,
+  });
+}
+
 // ---- Ağaçlar (low-poly, Ghibli) ---------------------------------------
 function makeRoundTree() {
   const g = new THREE.Group();
@@ -389,9 +423,11 @@ for (let i = 0; i < 110; i++) {
   if (Math.abs(x) < 7) continue;
   const t = Math.random() < 0.42 ? makePine() : makeRoundTree();
   t.position.set(x, heightAt(x, z), z);
-  t.scale.setScalar(0.7 + Math.random() * 0.8);
+  const ts = 0.7 + Math.random() * 0.8;
+  t.scale.setScalar(ts);
   t.rotation.y = Math.random() * Math.PI;
   trees.add(t);
+  colliders.push({ x, z, r: 0.9 * ts });       // gövde çarpışması
 }
 for (let i = 0; i < 40; i++) {                 // çalılar
   const x = (Math.random() - 0.5) * (WORLD - 18);
@@ -415,6 +451,7 @@ for (let i = 0; i < 40; i++) {
   rock.castShadow = true; rock.receiveShadow = true;
   addOutline(rock, 0.05);
   scene.add(rock);
+  if (rr > 0.9) colliders.push({ x, z, r: rr * 0.85 });   // sadece büyük kayalar
 }
 
 // ---- Evler (Ghibli kasabası) ------------------------------------------
@@ -469,10 +506,12 @@ const houseSpots = [
 houseSpots.forEach((spot, i) => {
   const [x, z] = spot;
   const [bc, rc] = houseColors[i % houseColors.length];
-  const h = makeHouse(bc, rc, { W: 5 + Math.random() * 2.5, H: 3.5 + Math.random() * 1.5, D: 4.5 + Math.random() * 2 });
+  const W = 5 + Math.random() * 2.5, D = 4.5 + Math.random() * 2;
+  const h = makeHouse(bc, rc, { W, H: 3.5 + Math.random() * 1.5, D });
   h.position.set(x, heightAt(x, z), z);
   h.rotation.y = Math.random() * Math.PI;
   housesProc.add(h);
+  colliders.push({ x, z, r: Math.max(W, D) * 0.55 });
 });
 scene.add(housesProc);
 
@@ -602,7 +641,7 @@ function emote(name) {
   current = a;
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v14 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v15 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -827,6 +866,22 @@ function update(dt) {
   player.position.x = THREE.MathUtils.clamp(player.position.x, -lim, lim);
   player.position.z = THREE.MathUtils.clamp(player.position.z, -lim, lim);
 
+  // Çarpışma: katı engellerin içinden geçme (daire-daire itme)
+  const PR = 0.6;                               // oyuncu yarıçapı
+  for (let iter = 0; iter < 2; iter++) {
+    for (let c = 0; c < colliders.length; c++) {
+      const o = colliders[c];
+      const dx = player.position.x - o.x, dz = player.position.z - o.z;
+      const min = o.r + PR;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < min * min && d2 > 1e-6) {
+        const d = Math.sqrt(d2), push = min - d;
+        player.position.x += (dx / d) * push;
+        player.position.z += (dz / d) * push;
+      }
+    }
+  }
+
   // zıplama + yerçekimi
   const groundY = heightAt(player.position.x, player.position.z);
   if ((keys['Space'] || touchJump) && grounded) { vy = 9; grounded = false; }
@@ -910,6 +965,20 @@ function update(dt) {
   for (let i = 0; i < trees.children.length; i++) {
     const t = trees.children[i];
     t.rotation.z = Math.sin(elapsed * 1.1 + i * 0.7) * 0.025;
+  }
+
+  // Kelebekler — yumuşak gezinme + kanat çırpma
+  for (const b of butterflies) {
+    const t = elapsed * b.speed + b.phase;
+    const x = b.cx + Math.cos(t) * b.r;
+    const z = b.cz + Math.sin(t * 0.8) * b.r;
+    const y = heightAt(x, z) + b.h + Math.sin(elapsed * 2.4 + b.phase) * 0.4;
+    b.g.position.set(x, y, z);
+    const dx = -Math.sin(t) * b.r, dz = Math.cos(t * 0.8) * 0.8 * b.r;
+    b.g.rotation.y = Math.atan2(dx, dz);
+    const flap = 0.15 + (Math.sin(elapsed * b.flapSpeed + b.flapPhase) * 0.5 + 0.5) * 1.15;
+    b.g.userData.wl.rotation.y = flap;
+    b.g.userData.wr.rotation.y = -flap;
   }
 
   clouds.rotation.y += dt * 0.005;
