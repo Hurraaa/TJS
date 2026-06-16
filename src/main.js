@@ -331,7 +331,7 @@ function setAction(name) {
   current = next;
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v7 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v8 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -342,13 +342,6 @@ const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v
   const onLoad = (gltf) => {
     setStatus('karakter modeli yüklendi ✓', 'ok');
     const model = gltf.scene;
-
-    // Boyutlandır: hedef yükseklik ~2.4, ayaklar y=0'da
-    let box = new THREE.Box3().setFromObject(model);
-    const s = 2.4 / (box.max.y - box.min.y);
-    model.scale.setScalar(s);
-    box = new THREE.Box3().setFromObject(model);
-    model.position.y -= box.min.y;
 
     // Dünyanın toon görünümüne uydur
     const conv = (m) => new THREE.MeshToonMaterial({
@@ -364,6 +357,19 @@ const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v
     });
 
     player.add(model);
+
+    // Boyutlandır: gerçek boyu ölç (matrisler güncel), hedef ~2.4 birim, ayaklar yerde.
+    // Kök ölçeği EZME — çarp (model kendi iç ölçeğini koruyabilir).
+    model.position.set(0, 0, 0);
+    model.updateMatrixWorld(true);
+    let box = new THREE.Box3().setFromObject(model);
+    const h = (box.max.y - box.min.y) || 1;
+    model.scale.multiplyScalar(2.4 / h);
+    model.updateMatrixWorld(true);
+    box = new THREE.Box3().setFromObject(model);
+    model.position.y += player.position.y - box.min.y;   // ayakları zemine oturt
+    setStatus('karakter yüklendi ✓ (boy ' + (box.max.y - box.min.y).toFixed(1) + 'm)', 'ok');
+
     proc.visible = false;                 // yedek gövdeyi gizle
 
     // Animasyonlar
