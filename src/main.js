@@ -2,6 +2,10 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { Water } from 'three/addons/objects/Water.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 /* =========================================================================
    Ghibli Dünyası — stilize 3B açık dünya (Three.js)
@@ -24,22 +28,16 @@ document.getElementById('app').appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog('#cfe6e0', 90, 340);
 
-// Gökyüzü (three.js Sky) — altın saat güneşi
+// Gökyüzü (three.js Sky) — günün saati setTimeOfDay() ile ayarlanır
 const SUN_DIR = new THREE.Vector3();
+let sky;
 {
-  const sky = new Sky();
+  sky = new Sky();
   sky.scale.setScalar(10000);
   scene.add(sky);
   const u = sky.material.uniforms;
-  u.turbidity.value = 5;
-  u.rayleigh.value = 1.4;
   u.mieCoefficient.value = 0.006;
   u.mieDirectionalG.value = 0.82;
-  const elevation = 16, azimuth = 130;            // alçak, sıcak öğleden sonra
-  const phi = THREE.MathUtils.degToRad(90 - elevation);
-  const theta = THREE.MathUtils.degToRad(azimuth);
-  SUN_DIR.setFromSphericalCoords(1, phi, theta);
-  u.sunPosition.value.copy(SUN_DIR);
 }
 
 // Yumuşak bulutlar
@@ -184,6 +182,38 @@ let water = null;
   water.rotation.x = -Math.PI / 2;
   water.position.set(LAKE.x, heightAt(LAKE.x, LAKE.z) + 0.15, LAKE.z);
   scene.add(water);
+}
+
+// ---- Günün saati (atmosfer) -------------------------------------------
+// t: 0 = gün doğumu · 0.5 = öğle · 1 = gün batımı
+const _fogDay = new THREE.Color('#cfe6e0'), _fogWarm = new THREE.Color('#f2c79a');
+const _sunDay = new THREE.Color('#fff3da'), _sunWarm = new THREE.Color('#ff8a3d');
+const _hemiDay = new THREE.Color('#ffe9c8'), _hemiWarm = new THREE.Color('#ffcf9c');
+function setTimeOfDay(t) {
+  t = THREE.MathUtils.clamp(t, 0, 1);
+  const day = Math.sin(t * Math.PI);          // 0 ufukta, 1 tepede
+  const warm = 1 - day;
+  const elevation = day * 55 + 3;
+  const azimuth = 70 + t * 140;
+  SUN_DIR.setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - elevation), THREE.MathUtils.degToRad(azimuth));
+  const u = sky.material.uniforms;
+  u.sunPosition.value.copy(SUN_DIR);
+  u.rayleigh.value = 1.1 + warm * 2.2;        // gün batımında daha kızıl
+  u.turbidity.value = 4 + warm * 6;
+  sun.color.copy(_sunDay).lerp(_sunWarm, warm);
+  sun.intensity = 1.5 + day * 1.3;
+  hemi.color.copy(_hemiDay).lerp(_hemiWarm, warm);
+  hemi.intensity = 0.45 + day * 0.45;
+  scene.fog.color.copy(_fogDay).lerp(_fogWarm, warm);
+  if (water) water.material.uniforms['sunDirection'].value.copy(SUN_DIR).normalize();
+}
+setTimeOfDay(0.2);                             // varsayılan: sıcak ikindi
+{
+  const todEl = document.getElementById('tod');
+  if (todEl) {
+    todEl.value = '0.2';
+    todEl.addEventListener('input', () => setTimeOfDay(parseFloat(todEl.value)));
+  }
 }
 
 // ---- Instanced doğa: çimen kümeleri -----------------------------------
@@ -498,7 +528,7 @@ function emote(name) {
   current = a;
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v12 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v13 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -793,11 +823,19 @@ function update(dt) {
   clouds.rotation.y += dt * 0.005;
 }
 
+// ---- Post-processing: hafif bloom (güneş/su parıltısı) ----------------
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight), 0.28, 0.6, 0.85); // güç, yarıçap, eşik
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
   update(dt);
-  renderer.render(scene, camera);
+  composer.render();
 }
 animate();
 
@@ -805,6 +843,7 @@ addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
 });
 
 // loader gizle
