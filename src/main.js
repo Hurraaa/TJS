@@ -217,23 +217,49 @@ setTimeOfDay(0.2);                             // varsayılan: sıcak ikindi
   }
 }
 
-// ---- Şelale (göle dökülür) --------------------------------------------
+// ---- Dağlar -----------------------------------------------------------
+// Şelalenin arkasında, suyun indiği büyük bir dağ kütlesi.
+function addMountain(mx, mz, h, baseR, color) {
+  const g = new THREE.Group();
+  const main = new THREE.Mesh(roughen(new THREE.ConeGeometry(baseR, h, 8), baseR * 0.05), toon(color));
+  main.position.y = h / 2; main.castShadow = true; main.receiveShadow = true; addOutline(main, 0.5); g.add(main);
+  // yan zirveler
+  for (let i = 0; i < 3; i++) {
+    const r = baseR * (0.55 - i * 0.12), hh = h * (0.7 - i * 0.15);
+    const c = new THREE.Mesh(roughen(new THREE.ConeGeometry(r, hh, 7), r * 0.05), toon(color));
+    const a = Math.random() * Math.PI * 2;
+    c.position.set(Math.cos(a) * baseR * 0.5, hh / 2, Math.sin(a) * baseR * 0.5);
+    c.castShadow = true; addOutline(c, 0.4); g.add(c);
+  }
+  // kar tepesi
+  const snow = new THREE.Mesh(roughen(new THREE.ConeGeometry(baseR * 0.36, h * 0.3, 8), baseR * 0.03), toon('#eef4fb'));
+  snow.position.y = h - h * 0.15; addOutline(snow, 0.2); g.add(snow);
+  g.position.set(mx, heightAt(mx, mz) - 1, mz);
+  scene.add(g);
+  colliders.push({ x: mx, z: mz, r: baseR * 0.78 });
+  return g;
+}
+addMountain(-104, 40, 66, 44, '#7c8a86');     // şelale dağı (ana)
+addMountain(-120, 92, 52, 36, '#84908b');     // arkada sıradağ
+addMountain(-118, -8, 46, 32, '#7a8682');
+
+// ---- Şelale (dağdan göle dökülür) -------------------------------------
 const waterfallParts = [];
 {
   const baseX = LAKE.x - LAKE.r + 6, baseZ = LAKE.z;
   const lakeY = heightAt(LAKE.x, LAKE.z) + 0.15;
-  const fallH = 13;
+  const fallH = 30;                            // dağ yamacından göle kadar
   const topY = lakeY + fallH;
 
-  // Kaya uçurum
-  for (let i = 0; i < 6; i++) {
-    const r = 3 + Math.random() * 2;
-    const rock = new THREE.Mesh(roughen(new THREE.DodecahedronGeometry(r, 0), r * 0.2), toon('#888d94'));
-    rock.position.set(baseX - 4 + (Math.random() - 0.5) * 3, lakeY + 1 + i * 2.3, baseZ + (Math.random() - 0.5) * 9);
+  // Kaya kanal/uçurum — dağ eteğinden suya
+  for (let i = 0; i < 11; i++) {
+    const r = 3.4 + Math.random() * 2.2;
+    const rock = new THREE.Mesh(roughen(new THREE.DodecahedronGeometry(r, 0), r * 0.2), toon('#7f857f'));
+    rock.position.set(baseX - 5 + (Math.random() - 0.5) * 3, lakeY + 1 + i * 2.7, baseZ + (Math.random() - 0.5) * 10);
     rock.rotation.set(Math.random(), Math.random(), Math.random());
     rock.castShadow = true; rock.receiveShadow = true; addOutline(rock, 0.06);
     scene.add(rock);
-    colliders.push({ x: rock.position.x, z: rock.position.z, r: r * 0.7 });
+    if (i < 3) colliders.push({ x: rock.position.x, z: rock.position.z, r: r * 0.7 });
   }
 
   // Akan su perdesi (animasyonlu shader)
@@ -260,7 +286,7 @@ const waterfallParts = [];
         gl_FragColor = vec4(col, body * edge);
       }`,
   });
-  const fall = new THREE.Mesh(new THREE.PlaneGeometry(5.5, fallH), fallMat);
+  const fall = new THREE.Mesh(new THREE.PlaneGeometry(6.5, fallH), fallMat);
   fall.position.set(baseX, lakeY + fallH / 2, baseZ);
   fall.rotation.y = Math.PI / 2;            // perde göle bakar
   scene.add(fall);
@@ -641,7 +667,7 @@ function emote(name) {
   current = a;
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v15 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v16 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -824,6 +850,10 @@ if (isTouch) {
   tap('btnYes', () => emote('yes'));
   tap('btnNo', () => emote('no'));
   tap('btnThumb', () => emote('thumbsup'));
+
+  // Emote panelini aç/kapa
+  const ewrap = document.getElementById('emoteWrap');
+  tap('emoteToggle', () => ewrap.classList.toggle('open'));
 }
 
 // ---- Oyun döngüsü ------------------------------------------------------

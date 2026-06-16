@@ -49,7 +49,6 @@
       padding: 6px 12px; border-radius: 999px; box-shadow: 0 4px 14px rgba(0,0,0,.12);
     }
     #tod-bar input[type=range] { width: 150px; accent-color: #e89b4c; }
-    body.touch-device #tod-bar { top: auto; bottom: 150px; }
     #hud kbd {
       background: #fff; border: 1px solid #cfd9dd; border-bottom-width: 2px;
       border-radius: 6px; padding: 1px 6px; font-size: 12px; font-weight: 600;
@@ -91,20 +90,20 @@
     .btn:active, .btn.active { background: rgba(120,200,227,.85); }
     #btnJump { right: 26px; bottom: 34px; }
     #btnRun  { right: 120px; bottom: 90px; width: 72px; height: 72px; font-size: 13px; }
-    /* Emote çubuğu (üst orta) */
+    /* Emote paneli — solda, açılır/kapanır */
+    #emoteWrap { position: absolute; left: 14px; top: 84px; }
+    #emoteToggle { position: static; width: 58px; height: 58px; font-size: 24px; }
     #emotes {
-      position: absolute; top: 50px; left: 50%; transform: translateX(-50%);
-      display: flex; gap: 8px; pointer-events: none;
+      display: none; flex-direction: column; gap: 8px; margin-top: 10px;
     }
-    #emotes .btn {
-      position: static; width: 58px; height: 58px; font-size: 11px; pointer-events: auto;
-    }
+    #emoteWrap.open #emotes { display: flex; }
+    #emotes .btn { position: static; width: 58px; height: 58px; font-size: 11px; }
   </style>
 </head>
 <body>
   <div id="app"></div>
 
-  <div id="status">v15 · karakter modeli yükleniyor…</div>
+  <div id="status">v16 · karakter modeli yükleniyor…</div>
   <div id="paper"></div>
   <div id="vignette"></div>
 
@@ -132,12 +131,15 @@
     <div id="joy"><div id="joyKnob"></div></div>
     <div id="btnRun" class="btn">KOŞ</div>
     <div id="btnJump" class="btn">ZIPLA</div>
-    <div id="emotes">
-      <div id="btnDance" class="btn">DANS</div>
-      <div id="btnWave" class="btn">SELAM</div>
-      <div id="btnYes" class="btn">EVET</div>
-      <div id="btnNo" class="btn">HAYIR</div>
-      <div id="btnThumb" class="btn">👍</div>
+    <div id="emoteWrap">
+      <div id="emoteToggle" class="btn">🎭</div>
+      <div id="emotes">
+        <div id="btnDance" class="btn">DANS</div>
+        <div id="btnWave" class="btn">SELAM</div>
+        <div id="btnYes" class="btn">EVET</div>
+        <div id="btnNo" class="btn">HAYIR</div>
+        <div id="btnThumb" class="btn">👍</div>
+      </div>
     </div>
   </div>
 
