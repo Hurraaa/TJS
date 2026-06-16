@@ -24,6 +24,9 @@
       background: #fff; border: 1px solid #cfd9dd; border-bottom-width: 2px;
       border-radius: 6px; padding: 1px 6px; font-size: 12px; font-weight: 600;
     }
+    #hud .mobile { display: none; }
+    body.touch-device #hud .desktop { display: none; }
+    body.touch-device #hud .mobile { display: inline; }
     #loader {
       position: fixed; inset: 0; display: grid; place-items: center;
       background: linear-gradient(#bfe3f0, #e9f7ef);
@@ -32,6 +35,32 @@
     }
     #loader .t { font-size: 18px; letter-spacing: .5px; opacity: .8; }
     #loader.hide { opacity: 0; pointer-events: none; }
+
+    /* --- Mobil dokunmatik kontroller --- */
+    #touch { position: fixed; inset: 0; pointer-events: none; z-index: 5; display: none; }
+    #touch.on { display: block; }
+    #joy {
+      position: absolute; left: 22px; bottom: 28px; width: 130px; height: 130px;
+      border-radius: 50%; background: rgba(255,255,255,.25);
+      border: 2px solid rgba(255,255,255,.5); pointer-events: auto; touch-action: none;
+    }
+    #joyKnob {
+      position: absolute; left: 50%; top: 50%; width: 58px; height: 58px;
+      margin: -29px 0 0 -29px; border-radius: 50%;
+      background: rgba(255,255,255,.85); box-shadow: 0 3px 10px rgba(0,0,0,.2);
+      pointer-events: none;
+    }
+    .btn {
+      position: absolute; pointer-events: auto; touch-action: none; user-select: none;
+      width: 84px; height: 84px; border-radius: 50%;
+      display: grid; place-items: center; font-weight: 700; font-size: 15px;
+      font-family: ui-rounded, system-ui, sans-serif; color: #1b3a45;
+      background: rgba(255,255,255,.55); border: 2px solid rgba(255,255,255,.7);
+      backdrop-filter: blur(4px);
+    }
+    .btn:active, .btn.active { background: rgba(120,200,227,.85); }
+    #btnJump { right: 26px; bottom: 34px; }
+    #btnRun  { right: 120px; bottom: 90px; width: 72px; height: 72px; font-size: 13px; }
   </style>
 </head>
 <body>
@@ -39,12 +68,21 @@
 
   <div id="hud">
     <b>Ghibli Dünyası</b><br />
-    <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> hareket ·
+    <span class="desktop"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> hareket ·
     <kbd>Shift</kbd> koş · <kbd>Space</kbd> zıpla<br />
-    Fareyi sürükle: kamera · Tekerlek: yakınlaş
+    Fareyi sürükle: kamera · Tekerlek: yakınlaş</span>
+    <span class="mobile">Joystick ile yürü · sağdaki butonlar koş/zıpla<br />
+    Boş alanı sürükle: kamera · İki parmak: yakınlaş</span>
   </div>
 
   <div id="loader"><div class="t">Dünya yükleniyor…</div></div>
+
+  <!-- Mobil dokunmatik arayüz -->
+  <div id="touch">
+    <div id="joy"><div id="joyKnob"></div></div>
+    <div id="btnRun" class="btn">KOŞ</div>
+    <div id="btnJump" class="btn">ZIPLA</div>
+  </div>
 
   <script type="importmap">
   {

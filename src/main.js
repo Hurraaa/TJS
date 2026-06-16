@@ -228,22 +228,23 @@ const parts = {};
 {
   const skin = toon('#f3c9a0'), shirt = toon('#4a7ec0'), pants = toon('#3a4a5a'), hair = toon('#3a2a22');
 
+  // Not: grup orijini (y=0) ayak tabanında; bacak merkezi 0.6 → kapsül altı tam y=0'da.
   parts.torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.45, 0.7, 4, 10), shirt);
-  parts.torso.position.y = 1.55; player.add(parts.torso);
+  parts.torso.position.y = 1.25; player.add(parts.torso);
 
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 14), skin);
-  head.position.y = 2.5; player.add(head);
+  head.position.y = 2.2; player.add(head);
   const hairCap = new THREE.Mesh(new THREE.SphereGeometry(0.46, 16, 14, 0, Math.PI * 2, 0, Math.PI * 0.62), hair);
-  hairCap.position.y = 2.56; player.add(hairCap);
+  hairCap.position.y = 2.26; player.add(hairCap);
 
   parts.armL = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.7, 4, 8), shirt);
   parts.armR = parts.armL.clone();
-  parts.armL.position.set(-0.62, 1.7, 0); parts.armR.position.set(0.62, 1.7, 0);
+  parts.armL.position.set(-0.62, 1.4, 0); parts.armR.position.set(0.62, 1.4, 0);
   player.add(parts.armL, parts.armR);
 
   parts.legL = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.8, 4, 8), pants);
   parts.legR = parts.legL.clone();
-  parts.legL.position.set(-0.24, 0.9, 0); parts.legR.position.set(0.24, 0.9, 0);
+  parts.legL.position.set(-0.24, 0.6, 0); parts.legR.position.set(0.24, 0.6, 0);
   player.add(parts.legL, parts.legR);
 
   player.traverse((o) => { if (o.isMesh) o.castShadow = true; });
@@ -260,11 +261,16 @@ const keys = {};
 addEventListener('keydown', (e) => { keys[e.code] = true; });
 addEventListener('keyup', (e) => { keys[e.code] = false; });
 
-let dragging = false, lastX = 0, lastY = 0;
-renderer.domElement.addEventListener('pointerdown', (e) => { dragging = true; lastX = e.clientX; lastY = e.clientY; });
-addEventListener('pointerup', () => { dragging = false; });
+// Kamera sürükleme — sadece tuval üzerinde başlayan dokunuş/fare döndürür
+let dragging = false, lastX = 0, lastY = 0, camPointer = null;
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  if (camPointer !== null) return;            // ilk parmağı kameraya ata
+  camPointer = e.pointerId; dragging = true; lastX = e.clientX; lastY = e.clientY;
+});
+addEventListener('pointerup', (e) => { if (e.pointerId === camPointer) { dragging = false; camPointer = null; } });
+addEventListener('pointercancel', (e) => { if (e.pointerId === camPointer) { dragging = false; camPointer = null; } });
 addEventListener('pointermove', (e) => {
-  if (!dragging) return;
+  if (!dragging || e.pointerId !== camPointer) return;
   camYaw -= (e.clientX - lastX) * 0.005;
   camPitch = THREE.MathUtils.clamp(camPitch - (e.clientY - lastY) * 0.005, -0.2, 1.1);
   lastX = e.clientX; lastY = e.clientY;
@@ -273,13 +279,79 @@ addEventListener('wheel', (e) => {
   camDist = THREE.MathUtils.clamp(camDist + e.deltaY * 0.01, 5, 22);
 }, { passive: true });
 
+// İki parmakla yakınlaştırma (pinch)
+let pinchStart = 0, pinchDist0 = 0;
+addEventListener('touchmove', (e) => {
+  if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const d = Math.hypot(dx, dy);
+    if (!pinchStart) { pinchStart = d; pinchDist0 = camDist; }
+    camDist = THREE.MathUtils.clamp(pinchDist0 * (pinchStart / d), 5, 22);
+  }
+}, { passive: true });
+addEventListener('touchend', () => { pinchStart = 0; });
+
+// ---- Mobil dokunmatik kontroller (joystick + butonlar) ----------------
+const touch = { x: 0, y: 0 };           // joystick yönü, -1..1
+let touchRun = false, touchJump = false;
+const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+if (isTouch) {
+  document.getElementById('touch').classList.add('on');
+  document.body.classList.add('touch-device');
+
+  const joy = document.getElementById('joy');
+  const knob = document.getElementById('joyKnob');
+  let joyId = null;
+  const R = 50;                          // joystick yarıçapı (px)
+  const setKnob = (dx, dy) => { knob.style.transform = `translate(${dx}px, ${dy}px)`; };
+  const onJoy = (e) => {
+    const t = [...e.touches].find((tt) => tt.identifier === joyId);
+    if (!t) return;
+    const r = joy.getBoundingClientRect();
+    let dx = t.clientX - (r.left + r.width / 2);
+    let dy = t.clientY - (r.top + r.height / 2);
+    const len = Math.hypot(dx, dy) || 1;
+    if (len > R) { dx = dx / len * R; dy = dy / len * R; }
+    setKnob(dx, dy);
+    touch.x = dx / R;                    // sağ +
+    touch.y = -dy / R;                   // yukarı + (ileri)
+  };
+  joy.addEventListener('touchstart', (e) => {
+    joyId = e.changedTouches[0].identifier; onJoy(e); e.preventDefault();
+  }, { passive: false });
+  joy.addEventListener('touchmove', (e) => { onJoy(e); e.preventDefault(); }, { passive: false });
+  const endJoy = (e) => {
+    if ([...e.changedTouches].some((tt) => tt.identifier === joyId)) {
+      joyId = null; touch.x = 0; touch.y = 0; setKnob(0, 0);
+    }
+  };
+  joy.addEventListener('touchend', endJoy);
+  joy.addEventListener('touchcancel', endJoy);
+
+  const bindHold = (id, set) => {
+    const el = document.getElementById(id);
+    const on = (e) => { set(true); el.classList.add('active'); e.preventDefault(); };
+    const off = (e) => { set(false); el.classList.remove('active'); e.preventDefault(); };
+    el.addEventListener('touchstart', on, { passive: false });
+    el.addEventListener('touchend', off, { passive: false });
+    el.addEventListener('touchcancel', off, { passive: false });
+  };
+  // KOŞ: aç/kapa (toggle), ZIPLA: bas
+  const runEl = document.getElementById('btnRun');
+  runEl.addEventListener('touchstart', (e) => {
+    touchRun = !touchRun; runEl.classList.toggle('active', touchRun); e.preventDefault();
+  }, { passive: false });
+  bindHold('btnJump', (v) => { touchJump = v; });
+}
+
 // ---- Oyun döngüsü ------------------------------------------------------
 const vel = new THREE.Vector3();
 let vy = 0, grounded = true, walkPhase = 0, facing = Math.PI;
 const clock = new THREE.Clock();
 
 function update(dt) {
-  const run = keys['ShiftLeft'] || keys['ShiftRight'];
+  const run = keys['ShiftLeft'] || keys['ShiftRight'] || touchRun;
   const speed = run ? 11 : 6;
 
   // kameraya göre yön
@@ -291,8 +363,12 @@ function update(dt) {
   if (keys['KeyS']) move.sub(forward);
   if (keys['KeyD']) move.add(right);
   if (keys['KeyA']) move.sub(right);
+  // joystick (analog)
+  if (touch.x || touch.y) {
+    move.addScaledVector(forward, touch.y).addScaledVector(right, touch.x);
+  }
 
-  const moving = move.lengthSq() > 0;
+  const moving = move.lengthSq() > 0.0004;
   if (moving) {
     move.normalize();
     vel.lerp(move.multiplyScalar(speed), 1 - Math.pow(0.001, dt));
@@ -310,7 +386,7 @@ function update(dt) {
 
   // zıplama + yerçekimi
   const groundY = heightAt(player.position.x, player.position.z);
-  if (keys['Space'] && grounded) { vy = 9; grounded = false; }
+  if ((keys['Space'] || touchJump) && grounded) { vy = 9; grounded = false; }
   vy -= 26 * dt;
   player.position.y += vy * dt;
   if (player.position.y <= groundY) { player.position.y = groundY; vy = 0; grounded = true; }
@@ -329,7 +405,7 @@ function update(dt) {
   parts.armL.rotation.x = -sw * 0.7;
   parts.armR.rotation.x = sw * 0.7;
   const bob = Math.abs(Math.sin(walkPhase * 2)) * Math.min(1, speed2d / 5) * 0.08;
-  parts.torso.position.y = 1.55 + bob;
+  parts.torso.position.y = 1.25 + bob;
 
   // kamera takip
   camTarget.lerp(new THREE.Vector3(player.position.x, player.position.y + 2.2, player.position.z), 1 - Math.pow(0.0008, dt));
