@@ -398,24 +398,49 @@ function scatterFlowers(color, count) {
 
 // ---- Kelebekler -------------------------------------------------------
 const butterflies = [];
-function makeButterfly(color) {
+// Kelebek kanat silüeti (ön + arka kanat), gövde seamı x=0'da
+const _wingShape = new THREE.Shape();
+_wingShape.moveTo(0.0, 0.05);
+_wingShape.quadraticCurveTo(0.18, 0.52, 0.52, 0.52);   // ön kanat üst uç
+_wingShape.quadraticCurveTo(0.68, 0.34, 0.52, 0.14);   // ön kanat dış kenar
+_wingShape.quadraticCurveTo(0.44, 0.02, 0.50, -0.12);  // bel (iki kanat arası)
+_wingShape.quadraticCurveTo(0.66, -0.36, 0.34, -0.50); // arka kanat dış
+_wingShape.quadraticCurveTo(0.12, -0.52, 0.05, -0.26); // arka kanat iç
+_wingShape.quadraticCurveTo(0.0, -0.12, 0.0, 0.05);
+const _wingGeo = new THREE.ShapeGeometry(_wingShape, 16);
+const _spotGeo = new THREE.CircleGeometry(0.09, 12);
+function makeButterfly(color, spotColor) {
   const g = new THREE.Group();
-  const wingGeo = new THREE.PlaneGeometry(0.5, 0.66);
-  wingGeo.translate(0.25, 0, 0);              // dönüş ekseni iç kenarda (gövde)
   const mat = new THREE.MeshToonMaterial({ color, gradientMap: ramp, side: THREE.DoubleSide });
-  const wl = new THREE.Mesh(wingGeo, mat);
-  const wr = new THREE.Mesh(wingGeo, mat); wr.scale.x = -1;
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.5, 5), toon('#2b2320'));
+  const edgeMat = new THREE.MeshBasicMaterial({ color: INK, side: THREE.DoubleSide });
+  const spotMat = new THREE.MeshBasicMaterial({ color: spotColor, side: THREE.DoubleSide });
+  const mkWing = (sign) => {
+    const w = new THREE.Mesh(_wingGeo, mat);
+    w.scale.x = sign;
+    const edge = new THREE.Mesh(_wingGeo, edgeMat);    // ince koyu kenar (mürekkep)
+    edge.scale.set(1.12, 1.1, 1); edge.position.z = -0.012;
+    const spot1 = new THREE.Mesh(_spotGeo, spotMat); spot1.position.set(0.42, 0.34, 0.012);
+    const spot2 = new THREE.Mesh(_spotGeo, spotMat); spot2.position.set(0.34, -0.32, 0.012); spot2.scale.setScalar(0.7);
+    w.add(edge, spot1, spot2);
+    return w;
+  };
+  const wl = mkWing(1), wr = mkWing(-1);
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.5, 4, 6), toon('#2b2320'));
   body.rotation.x = Math.PI / 2;
   g.add(wl, wr, body);
   g.userData = { wl, wr };
   return g;
 }
-const bflyColors = ['#ff8fb1', '#ffd95e', '#9ad0ff', '#ffffff', '#c79bff', '#ff9e5e'];
+const bflyColors = [                                   // [kanat, benek]
+  ['#ff8fb1', '#7a2f48'], ['#ffd95e', '#9a6b1e'], ['#9ad0ff', '#2f5a7a'],
+  ['#f2f2f6', '#3a3f55'], ['#c79bff', '#5a3f7a'], ['#ff9e5e', '#8a4520'],
+];
 for (let i = 0; i < 16; i++) {
   const cx = (Math.random() - 0.5) * (WORLD - 60);
   const cz = (Math.random() - 0.5) * (WORLD - 60);
-  const b = makeButterfly(bflyColors[i % bflyColors.length]);
+  const [wc, spc] = bflyColors[i % bflyColors.length];
+  const b = makeButterfly(wc, spc);
+  b.scale.setScalar(0.85 + Math.random() * 0.4);
   scene.add(b);
   butterflies.push({
     g: b, cx, cz,
@@ -423,7 +448,7 @@ for (let i = 0; i < 16; i++) {
     h: 1.6 + Math.random() * 2.6,
     speed: 0.4 + Math.random() * 0.5,
     phase: Math.random() * Math.PI * 2,
-    flapSpeed: 14 + Math.random() * 8,
+    flapSpeed: 12 + Math.random() * 7,
     flapPhase: Math.random() * Math.PI * 2,
   });
 }
@@ -697,7 +722,7 @@ function emote(name) {
   current = a;
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v17 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v18 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
