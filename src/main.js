@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 /* =========================================================================
    Ghibli Dünyası — stilize 3B açık dünya (Three.js)
@@ -311,8 +312,68 @@ const parts = {};
   // mürekkep konturu (mevcut parçalara, kontur kopyaları gölge atmaz)
   [...player.children].forEach((m) => { if (m.isMesh) addOutline(m, 0.035); });
 }
+// Basit (yedek) gövdeyi bir alt gruba taşı; gerçek model yüklenince gizlenecek
+const proc = new THREE.Group();
+[...player.children].forEach((c) => proc.add(c));
+player.add(proc);
 player.position.set(0, heightAt(0, 0), 0);
 scene.add(player);
+
+// ---- Gerçek karakter modeli (glTF, hazır animasyonlu) -----------------
+let mixer = null;
+const actions = {};
+let current = null;
+function setAction(name) {
+  const next = actions[name] || actions.idle || current;
+  if (!next || next === current) return;
+  if (current) current.fadeOut(0.2);
+  next.reset().fadeIn(0.2).play();
+  current = next;
+}
+{
+  const MODEL_URL = 'https://unpkg.com/three@0.160.0/examples/models/gltf/RobotExpressive/RobotExpressive.glb';
+  new GLTFLoader().load(MODEL_URL, (gltf) => {
+    const model = gltf.scene;
+
+    // Boyutlandır: hedef yükseklik ~2.4, ayaklar y=0'da
+    let box = new THREE.Box3().setFromObject(model);
+    const s = 2.4 / (box.max.y - box.min.y);
+    model.scale.setScalar(s);
+    box = new THREE.Box3().setFromObject(model);
+    model.position.y -= box.min.y;
+
+    // Dünyanın toon görünümüne uydur
+    const conv = (m) => new THREE.MeshToonMaterial({
+      color: m.color ? m.color : new THREE.Color(0xffffff),
+      map: m.map || null, gradientMap: ramp,
+      transparent: m.transparent, opacity: m.opacity,
+    });
+    model.traverse((o) => {
+      if (o.isMesh) {
+        o.castShadow = true; o.receiveShadow = true;
+        o.material = Array.isArray(o.material) ? o.material.map(conv) : conv(o.material);
+      }
+    });
+
+    player.add(model);
+    proc.visible = false;                 // yedek gövdeyi gizle
+
+    // Animasyonlar
+    mixer = new THREE.AnimationMixer(model);
+    const byName = {};
+    gltf.animations.forEach((c) => { byName[c.name.toLowerCase()] = c; });
+    const pick = (...names) => { for (const n of names) if (byName[n]) return byName[n]; return null; };
+    const mk = (clip) => (clip ? mixer.clipAction(clip) : null);
+    actions.idle = mk(pick('idle'));
+    actions.walk = mk(pick('walking', 'walk'));
+    actions.run = mk(pick('running', 'run'));
+    actions.jump = mk(pick('jump'));
+    current = actions.idle;
+    if (current) current.play();
+  }, undefined, (err) => {
+    console.warn('Karakter modeli yüklenemedi, basit gövde kullanılıyor.', err);
+  });
+}
 
 // ---- Üçüncü şahıs kamera + giriş --------------------------------------
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -458,16 +519,23 @@ function update(dt) {
   d = Math.atan2(Math.sin(d), Math.cos(d));
   player.rotation.y += d * Math.min(1, dt * 12);
 
-  // prosedürel yürüyüş animasyonu
   const speed2d = Math.hypot(vel.x, vel.z);
-  walkPhase += dt * (speed2d * 1.1 + 0.0);
-  const sw = Math.sin(walkPhase * 2) * Math.min(1, speed2d / 5);
-  parts.legL.rotation.x = sw * 0.8;
-  parts.legR.rotation.x = -sw * 0.8;
-  parts.armL.rotation.x = -sw * 0.7;
-  parts.armR.rotation.x = sw * 0.7;
-  const bob = Math.abs(Math.sin(walkPhase * 2)) * Math.min(1, speed2d / 5) * 0.08;
-  parts.torso.position.y = 1.25 + bob;
+  if (mixer) {
+    // Gerçek model: hıza/duruma göre klip seç
+    const want = !grounded ? 'jump' : (speed2d > 7.5 ? 'run' : (speed2d > 0.4 ? 'walk' : 'idle'));
+    setAction(want);
+    mixer.update(dt);
+  } else {
+    // Yedek prosedürel yürüyüş animasyonu
+    walkPhase += dt * (speed2d * 1.1 + 0.0);
+    const sw = Math.sin(walkPhase * 2) * Math.min(1, speed2d / 5);
+    parts.legL.rotation.x = sw * 0.8;
+    parts.legR.rotation.x = -sw * 0.8;
+    parts.armL.rotation.x = -sw * 0.7;
+    parts.armR.rotation.x = sw * 0.7;
+    const bob = Math.abs(Math.sin(walkPhase * 2)) * Math.min(1, speed2d / 5) * 0.08;
+    parts.torso.position.y = 1.25 + bob;
+  }
 
   // kamera takip
   camTarget.lerp(new THREE.Vector3(player.position.x, player.position.y + 2.2, player.position.z), 1 - Math.pow(0.0008, dt));
