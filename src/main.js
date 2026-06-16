@@ -292,14 +292,44 @@ const waterfallParts = [];
   scene.add(fall);
   waterfallParts.push({ type: 'fall', mat: fallMat });
 
-  // Dip köpük halkası
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(1.4, 4.2, 28),
-    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, depthWrite: false }));
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.set(baseX, lakeY + 0.07, baseZ);
-  scene.add(ring);
-  waterfallParts.push({ type: 'ring', mesh: ring });
+  // Dip köpük — yumuşak, çalkantılı disk (shader)
+  const foamMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false,
+    uniforms: { time: { value: 0 } },
+    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `
+      varying vec2 vUv; uniform float time;
+      void main(){
+        vec2 p = vUv - 0.5;
+        float r = length(p) * 2.0;            // 0 merkez .. 1 kenar
+        float a = atan(p.y, p.x);
+        float churn = 0.5 + 0.5 * sin(a * 7.0 + time * 3.0) * sin(a * 3.0 - time * 2.0);
+        float rings = 0.5 + 0.5 * sin(r * 16.0 - time * 5.0);
+        float foam = smoothstep(1.0, 0.15, r);            // merkeze doğru yoğun
+        foam *= 0.55 + 0.45 * churn;
+        foam *= 0.7 + 0.3 * rings;
+        float alpha = foam * smoothstep(1.0, 0.6, r);
+        gl_FragColor = vec4(vec3(1.0), alpha * 0.9);
+      }`,
+  });
+  const foam = new THREE.Mesh(new THREE.CircleGeometry(6, 44), foamMat);
+  foam.rotation.x = -Math.PI / 2;
+  foam.position.set(baseX, lakeY + 0.08, baseZ);
+  scene.add(foam);
+  waterfallParts.push({ type: 'foam', mat: foamMat });
+
+  // Genişleyen dalga halkaları
+  const ripples = [];
+  for (let i = 0; i < 4; i++) {
+    const rg = new THREE.Mesh(
+      new THREE.RingGeometry(0.85, 1.15, 36),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, depthWrite: false }));
+    rg.rotation.x = -Math.PI / 2;
+    rg.position.set(baseX, lakeY + 0.07, baseZ);
+    scene.add(rg);
+    ripples.push({ mesh: rg, phase: i / 4 });
+  }
+  waterfallParts.push({ type: 'ripples', list: ripples });
 
   // Buhar (mist) parçacıkları
   const N = 70;
@@ -667,7 +697,7 @@ function emote(name) {
   current = a;
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v16 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v17 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -766,8 +796,22 @@ addEventListener('keydown', (e) => {
 });
 addEventListener('keyup', (e) => { keys[e.code] = false; });
 
-// GTA tarzı: kamerayı elle çevirme yok; karakteri takip edip otomatik arkasına geçer.
-// (Sadece yakınlaştırma manuel.)
+// GTA tarzı: yatay (yön) kamera otomatik takip eder; sadece DİKEY bakış manuel.
+// Ekranı sürükle → yukarı/aşağı bak. (Yön otomatik kaldığı için sürükleme sağ/sol etkilemez.)
+let dragId = null, dragLastY = 0;
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  if (dragId !== null) return;
+  dragId = e.pointerId; dragLastY = e.clientY;
+});
+addEventListener('pointerup', (e) => { if (e.pointerId === dragId) dragId = null; });
+addEventListener('pointercancel', (e) => { if (e.pointerId === dragId) dragId = null; });
+addEventListener('pointermove', (e) => {
+  if (e.pointerId !== dragId) return;
+  // yukarı sürükle (clientY azalır) → yukarı bak (camPitch azalır → kamera alçalır, yukarısı görünür)
+  camPitch = THREE.MathUtils.clamp(camPitch + (e.clientY - dragLastY) * 0.004, -0.25, 1.1);
+  dragLastY = e.clientY;
+});
+
 addEventListener('wheel', (e) => {
   camDist = THREE.MathUtils.clamp(camDist + e.deltaY * 0.01, 5, 22);
 }, { passive: true });
@@ -976,9 +1020,15 @@ function update(dt) {
   for (const wf of waterfallParts) {
     if (wf.type === 'fall') {
       wf.mat.uniforms.time.value += dt;
-    } else if (wf.type === 'ring') {
-      wf.mesh.material.opacity = 0.4 + Math.sin(elapsed * 4) * 0.12;
-      const s = 1 + Math.sin(elapsed * 4) * 0.06; wf.mesh.scale.set(s, s, s);
+    } else if (wf.type === 'foam') {
+      wf.mat.uniforms.time.value += dt;
+    } else if (wf.type === 'ripples') {
+      for (const rp of wf.list) {
+        const t = (elapsed * 0.55 + rp.phase) % 1;
+        const s = 1 + t * 5.5;
+        rp.mesh.scale.set(s, s, s);
+        rp.mesh.material.opacity = (1 - t) * 0.5;
+      }
     } else if (wf.type === 'mist') {
       const p = wf.geo.attributes.position;
       for (let i = 0; i < p.count; i++) {
