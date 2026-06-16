@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { Sky } from 'three/addons/objects/Sky.js';
+import { Water } from 'three/addons/objects/Water.js';
 
 /* =========================================================================
    Ghibli Dünyası — stilize 3B açık dünya (Three.js)
@@ -20,25 +22,24 @@ document.getElementById('app').appendChild(renderer.domElement);
 
 // ---- Scene & atmosphere -----------------------------------------------
 const scene = new THREE.Scene();
-const SKY_TOP = new THREE.Color('#7ec8e3');
-const SKY_BOTTOM = new THREE.Color('#e9f7ef');
-scene.background = SKY_TOP.clone();
-scene.fog = new THREE.Fog('#bfe3f0', 60, 240);
+scene.fog = new THREE.Fog('#cfe6e0', 90, 340);
 
-// Gradyan gökyüzü kubbesi
+// Gökyüzü (three.js Sky) — altın saat güneşi
+const SUN_DIR = new THREE.Vector3();
 {
-  const skyGeo = new THREE.SphereGeometry(400, 32, 16);
-  const skyMat = new THREE.ShaderMaterial({
-    side: THREE.BackSide,
-    uniforms: {
-      top: { value: SKY_TOP }, bottom: { value: SKY_BOTTOM }, offset: { value: 40 },
-    },
-    vertexShader: `varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
-    fragmentShader: `varying vec3 vP; uniform vec3 top; uniform vec3 bottom; uniform float offset;
-      void main(){ float h = normalize(vP + vec3(0.0, offset, 0.0)).y; float t = clamp(h*0.5+0.5, 0.0, 1.0);
-      gl_FragColor = vec4(mix(bottom, top, pow(t, 0.8)), 1.0); }`,
-  });
-  scene.add(new THREE.Mesh(skyGeo, skyMat));
+  const sky = new Sky();
+  sky.scale.setScalar(10000);
+  scene.add(sky);
+  const u = sky.material.uniforms;
+  u.turbidity.value = 5;
+  u.rayleigh.value = 1.4;
+  u.mieCoefficient.value = 0.006;
+  u.mieDirectionalG.value = 0.82;
+  const elevation = 16, azimuth = 130;            // alçak, sıcak öğleden sonra
+  const phi = THREE.MathUtils.degToRad(90 - elevation);
+  const theta = THREE.MathUtils.degToRad(azimuth);
+  SUN_DIR.setFromSphericalCoords(1, phi, theta);
+  u.sunPosition.value.copy(SUN_DIR);
 }
 
 // Yumuşak bulutlar
@@ -64,10 +65,10 @@ const clouds = makeClouds();
 scene.add(clouds);
 
 // ---- Lights ------------------------------------------------------------
-const hemi = new THREE.HemisphereLight('#cfefff', '#7ea06b', 0.9);
+const hemi = new THREE.HemisphereLight('#ffe9c8', '#7d9a63', 0.75);
 scene.add(hemi);
 
-const sun = new THREE.DirectionalLight('#fff4d6', 2.0);
+const sun = new THREE.DirectionalLight('#ffe2b0', 2.3);  // sıcak güneş
 sun.position.set(60, 90, 40);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
@@ -168,24 +169,20 @@ scene.add(ground);
   scene.add(path);
 }
 
-// Gölet (su)
+// Göl (yansımalı su — three.js Water)
+const LAKE = { x: -46, z: 40, r: 20 };
+let water = null;
 {
-  const waterGeo = new THREE.CircleGeometry(16, 40);
-  {                                          // kıyıyı dalgalandır (kusursuz daire değil)
-    const wp = waterGeo.attributes.position;
-    for (let i = 1; i < wp.count; i++) {     // 0 = merkez, dokunma
-      const ang = Math.atan2(wp.getY(i), wp.getX(i));
-      const wob = 1 + Math.sin(ang * 5) * 0.06 + Math.sin(ang * 11) * 0.04;
-      wp.setXY(i, wp.getX(i) * wob, wp.getY(i) * wob);
-    }
-    wp.needsUpdate = true;
-  }
-  const water = new THREE.Mesh(
-    waterGeo,
-    new THREE.MeshToonMaterial({ color: '#5fb6d6', gradientMap: ramp, transparent: true, opacity: 0.85 })
-  );
+  const waterNormals = new THREE.TextureLoader().load(
+    'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/textures/waternormals.jpg',
+    (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; });
+  water = new Water(new THREE.CircleGeometry(LAKE.r, 56), {
+    textureWidth: 512, textureHeight: 512, waterNormals,
+    sunDirection: SUN_DIR.clone().normalize(), sunColor: 0xffffff,
+    waterColor: 0x3d6e8c, distortionScale: 2.2, fog: !!scene.fog,
+  });
   water.rotation.x = -Math.PI / 2;
-  water.position.set(-46, heightAt(-46, 40) + 0.2, 40);
+  water.position.set(LAKE.x, heightAt(LAKE.x, LAKE.z) + 0.15, LAKE.z);
   scene.add(water);
 }
 
@@ -213,7 +210,29 @@ function scatterGrass(count = 4000) {
   mesh.instanceMatrix.needsUpdate = true;
   return mesh;
 }
-scene.add(scatterGrass());
+scene.add(scatterGrass(6500));
+
+// ---- Çiçekler (renk için) ---------------------------------------------
+function scatterFlowers(color, count) {
+  const petal = new THREE.SphereGeometry(0.16, 6, 5);
+  petal.scale(1, 0.5, 1); petal.translate(0, 0.7, 0);
+  const mesh = new THREE.InstancedMesh(petal, toon(color), count);
+  mesh.castShadow = false;
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1);
+  let n = 0;
+  for (let i = 0; i < count; i++) {
+    const x = (Math.random() - 0.5) * (WORLD - 40);
+    const z = (Math.random() - 0.5) * (WORLD - 40);
+    if (Math.abs(x) < 6) continue;
+    const sc = 0.7 + Math.random() * 0.7;
+    s.setScalar(sc);
+    m.compose(new THREE.Vector3(x, heightAt(x, z), z), q, s);
+    mesh.setMatrixAt(n++, m);
+  }
+  mesh.count = n; mesh.instanceMatrix.needsUpdate = true;
+  return mesh;
+}
+['#f7f3e8', '#ffd95e', '#ff8fb1', '#b48cff'].forEach((c) => scene.add(scatterFlowers(c, 110)));
 
 // ---- Ağaçlar (low-poly, Ghibli) ---------------------------------------
 function makeRoundTree() {
@@ -479,7 +498,7 @@ function emote(name) {
   current = a;
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v11 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v12 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -667,6 +686,7 @@ if (isTouch) {
 // ---- Oyun döngüsü ------------------------------------------------------
 const vel = new THREE.Vector3();
 let vy = 0, grounded = true, walkPhase = 0, facing = Math.PI;
+let elapsed = 0;
 const clock = new THREE.Clock();
 
 function update(dt) {
@@ -756,9 +776,19 @@ function update(dt) {
   camera.position.lerp(new THREE.Vector3(cx, cy, cz), 1 - Math.pow(0.001, dt));
   camera.lookAt(camTarget);
 
-  // güneşi oyuncuyla taşı (gölge alanı sınırlı)
+  // Güneşi gökyüzüyle aynı yönden tut (gölge yönü = gökyüzü güneşi)
   sun.target.position.copy(player.position);
-  sun.position.set(player.position.x + 60, 90, player.position.z + 40);
+  sun.position.copy(player.position).addScaledVector(SUN_DIR, 120);
+
+  // Su dalgaları
+  if (water) water.material.uniforms['time'].value += dt;
+
+  // Rüzgârda hafif salınım (ağaçlar + çalılar)
+  elapsed += dt;
+  for (let i = 0; i < trees.children.length; i++) {
+    const t = trees.children[i];
+    t.rotation.z = Math.sin(elapsed * 1.1 + i * 0.7) * 0.025;
+  }
 
   clouds.rotation.y += dt * 0.005;
 }
