@@ -349,7 +349,7 @@ function emote(name) {
   current = a;
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v9 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v10 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -402,12 +402,16 @@ const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v
     actions.jump = mk(pick('jump'));
     actions.dance = mk(pick('dance'));
     actions.wave = mk(pick('wave'));
+    actions.yes = mk(pick('yes'));
+    actions.no = mk(pick('no'));
+    actions.thumbsup = mk(pick('thumbsup', 'thumbs up'));
     current = actions.idle;
     if (current) current.play();
 
-    // Tek seferlik emote (el salla) bitince boşa dön
+    // Tek seferlik emote'lar bitince boşa dön
+    const oneShots = [actions.wave, actions.yes, actions.no, actions.thumbsup];
     mixer.addEventListener('finished', (e) => {
-      if (e.action === actions.wave) oneShotActive = false;
+      if (oneShots.includes(e.action)) oneShotActive = false;
     });
   };
 
@@ -438,6 +442,9 @@ addEventListener('keydown', (e) => {
   if (e.repeat) return;
   if (e.code === 'KeyF') emote('dance');
   if (e.code === 'KeyV') emote('wave');
+  if (e.code === 'KeyY') emote('yes');
+  if (e.code === 'KeyN') emote('no');
+  if (e.code === 'KeyT') emote('thumbsup');
 });
 addEventListener('keyup', (e) => { keys[e.code] = false; });
 
@@ -522,6 +529,9 @@ if (isTouch) {
     document.getElementById('btnDance').classList.toggle('active', emoting === 'dance');
   });
   tap('btnWave', () => emote('wave'));
+  tap('btnYes', () => emote('yes'));
+  tap('btnNo', () => emote('no'));
+  tap('btnThumb', () => emote('thumbsup'));
 }
 
 // ---- Oyun döngüsü ------------------------------------------------------
