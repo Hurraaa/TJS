@@ -330,9 +330,16 @@ function setAction(name) {
   next.reset().fadeIn(0.2).play();
   current = next;
 }
+const statusEl = document.getElementById('status');
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v6 · ' + msg; statusEl.className = cls; } };
 {
-  const MODEL_URL = 'https://unpkg.com/three@0.160.0/examples/models/gltf/RobotExpressive/RobotExpressive.glb';
-  new GLTFLoader().load(MODEL_URL, (gltf) => {
+  const MODEL_URLS = [
+    'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/models/gltf/RobotExpressive/RobotExpressive.glb',
+    'https://unpkg.com/three@0.160.0/examples/models/gltf/RobotExpressive/RobotExpressive.glb',
+  ];
+  const loader = new GLTFLoader();
+  const onLoad = (gltf) => {
+    setStatus('karakter modeli yüklendi ✓', 'ok');
     const model = gltf.scene;
 
     // Boyutlandır: hedef yükseklik ~2.4, ayaklar y=0'da
@@ -370,9 +377,22 @@ function setAction(name) {
     actions.jump = mk(pick('jump'));
     current = actions.idle;
     if (current) current.play();
-  }, undefined, (err) => {
-    console.warn('Karakter modeli yüklenemedi, basit gövde kullanılıyor.', err);
-  });
+  };
+
+  // Sırayla CDN'leri dene; hepsi başarısızsa basit gövdeye düş
+  const tryLoad = (i) => {
+    if (i >= MODEL_URLS.length) {
+      setStatus('model yüklenemedi — basit gövde kullanılıyor (konsola bak)', 'err');
+      console.warn('Karakter modeli hiçbir CDN’den yüklenemedi.');
+      return;
+    }
+    setStatus('karakter modeli yükleniyor… (' + (i + 1) + '/' + MODEL_URLS.length + ')');
+    loader.load(MODEL_URLS[i], onLoad, undefined, (err) => {
+      console.warn('Model yüklenemedi:', MODEL_URLS[i], err);
+      tryLoad(i + 1);
+    });
+  };
+  tryLoad(0);
 }
 
 // ---- Üçüncü şahıs kamera + giriş --------------------------------------
