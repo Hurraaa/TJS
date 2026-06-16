@@ -323,6 +323,8 @@ scene.add(player);
 let mixer = null;
 const actions = {};
 let current = null;
+let emoting = null;            // sürekli emote (dans), boştayken oynar
+let oneShotActive = false;     // tek seferlik emote (el salla) oynuyor mu
 function setAction(name) {
   const next = actions[name] || actions.idle || current;
   if (!next || next === current) return;
@@ -330,8 +332,24 @@ function setAction(name) {
   next.reset().fadeIn(0.2).play();
   current = next;
 }
+// Boştayken eğlence: 'dance' (aç/kapa) veya 'wave' (tek sefer el salla)
+function emote(name) {
+  if (!actions[name]) return;
+  if (name === 'dance') {
+    emoting = (emoting === 'dance') ? null : 'dance';   // aç/kapa
+    oneShotActive = false;
+    return;
+  }
+  // wave — tek seferlik
+  emoting = null; oneShotActive = true;
+  const a = actions[name];
+  if (current && current !== a) current.fadeOut(0.15);
+  a.reset(); a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true;
+  a.fadeIn(0.15).play();
+  current = a;
+}
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v8 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v9 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -382,8 +400,15 @@ const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v
     actions.walk = mk(pick('walking', 'walk'));
     actions.run = mk(pick('running', 'run'));
     actions.jump = mk(pick('jump'));
+    actions.dance = mk(pick('dance'));
+    actions.wave = mk(pick('wave'));
     current = actions.idle;
     if (current) current.play();
+
+    // Tek seferlik emote (el salla) bitince boşa dön
+    mixer.addEventListener('finished', (e) => {
+      if (e.action === actions.wave) oneShotActive = false;
+    });
   };
 
   // Sırayla CDN'leri dene; hepsi başarısızsa basit gövdeye düş
@@ -408,7 +433,12 @@ let camYaw = Math.PI, camPitch = 0.35, camDist = 11;
 const camTarget = new THREE.Vector3();
 
 const keys = {};
-addEventListener('keydown', (e) => { keys[e.code] = true; });
+addEventListener('keydown', (e) => {
+  keys[e.code] = true;
+  if (e.repeat) return;
+  if (e.code === 'KeyF') emote('dance');
+  if (e.code === 'KeyV') emote('wave');
+});
 addEventListener('keyup', (e) => { keys[e.code] = false; });
 
 // GTA tarzı: kamerayı elle çevirme yok; karakteri takip edip otomatik arkasına geçer.
@@ -481,6 +511,17 @@ if (isTouch) {
     touchRun = !touchRun; runEl.classList.toggle('active', touchRun); e.preventDefault();
   }, { passive: false });
   bindHold('btnJump', (v) => { touchJump = v; });
+
+  // Emote butonları (tek dokunuş)
+  const tap = (id, fn) => {
+    const el = document.getElementById(id);
+    el.addEventListener('touchstart', (e) => { fn(); e.preventDefault(); }, { passive: false });
+  };
+  tap('btnDance', () => {
+    emote('dance');
+    document.getElementById('btnDance').classList.toggle('active', emoting === 'dance');
+  });
+  tap('btnWave', () => emote('wave'));
 }
 
 // ---- Oyun döngüsü ------------------------------------------------------
@@ -538,7 +579,14 @@ function update(dt) {
   if (mixer) {
     // Gerçek model: hıza/duruma göre klip seç
     const want = !grounded ? 'jump' : (speed2d > 7.5 ? 'run' : (speed2d > 0.4 ? 'walk' : 'idle'));
-    setAction(want);
+    if (want !== 'idle') { emoting = null; oneShotActive = false; }  // hareket emote'u iptal eder
+    if (oneShotActive) {
+      // el salla bitene kadar bekle (finished olayı kapatır)
+    } else if (emoting) {
+      setAction(emoting);
+    } else {
+      setAction(want);
+    }
     mixer.update(dt);
   } else {
     // Yedek prosedürel yürüyüş animasyonu
