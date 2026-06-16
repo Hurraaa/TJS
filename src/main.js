@@ -86,26 +86,70 @@ function gradientMap(steps = 4) {
   tex.needsUpdate = true;
   return tex;
 }
-const ramp = gradientMap(4);
+const ramp = gradientMap(3);                 // daha yumuşak, suluboya bandı
 const toon = (color) => new THREE.MeshToonMaterial({ color, gradientMap: ramp });
+
+// --- El çizimi hissi yardımcıları --------------------------------------
+// 1) Mürekkep konturu: nesnenin büyütülmüş, içten görünen koyu kopyası
+const INK = new THREE.Color('#3a2f2a');
+function addOutline(mesh, thickness = 0.06) {
+  const mat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    uniforms: { thickness: { value: thickness }, inkColor: { value: INK } },
+    vertexShader: `uniform float thickness; varying float vy;
+      void main(){ vy = position.y; vec3 p = position + normalize(normal) * thickness;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0); }`,
+    fragmentShader: `uniform vec3 inkColor; void main(){ gl_FragColor = vec4(inkColor, 1.0); }`,
+  });
+  const o = new THREE.Mesh(mesh.geometry, mat);
+  o.castShadow = false; o.receiveShadow = false;
+  mesh.add(o);
+  return o;
+}
+// 2) Geometriyi düzensizleştir: kusursuz şekilleri elle yapılmış gibi boz
+function roughen(geo, amount = 0.12) {
+  const p = geo.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    p.setXYZ(i,
+      p.getX(i) + (Math.random() - 0.5) * amount,
+      p.getY(i) + (Math.random() - 0.5) * amount,
+      p.getZ(i) + (Math.random() - 0.5) * amount);
+  }
+  p.needsUpdate = true;
+  geo.computeVertexNormals();
+  return geo;
+}
 
 // ---- Zemin (yumuşak tepeler) ------------------------------------------
 const WORLD = 260;
 function heightAt(x, z) {
   return Math.sin(x * 0.045) * 2.4 + Math.cos(z * 0.05) * 2.2
-       + Math.sin((x + z) * 0.018) * 3.0;
+       + Math.sin((x + z) * 0.018) * 3.0
+       + Math.sin(x * 0.21 + z * 0.13) * 0.45      // ince elle çizilmiş tümsekler
+       + Math.cos(x * 0.37 - z * 0.29) * 0.28;
 }
 const groundGeo = new THREE.PlaneGeometry(WORLD, WORLD, 120, 120);
 groundGeo.rotateX(-Math.PI / 2);
 {
   const pos = groundGeo.attributes.position;
+  // boyasal renk dalgalanması: açık/koyu yeşil yamalar
+  const colors = new Float32Array(pos.count * 3);
+  const cA = new THREE.Color('#8fc96f'), cB = new THREE.Color('#6fa84f'), tmp = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), z = pos.getZ(i);
     pos.setY(i, heightAt(x, z));
+    const t = (Math.sin(x * 0.13) * Math.cos(z * 0.11) * 0.5 + 0.5) * 0.7
+            + Math.sin(x * 0.4 + z * 0.3) * 0.15 + 0.15;
+    tmp.copy(cA).lerp(cB, THREE.MathUtils.clamp(t, 0, 1));
+    colors[i * 3] = tmp.r; colors[i * 3 + 1] = tmp.g; colors[i * 3 + 2] = tmp.b;
   }
+  groundGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   groundGeo.computeVertexNormals();
 }
-const ground = new THREE.Mesh(groundGeo, toon('#86c06c'));
+const ground = new THREE.Mesh(
+  groundGeo,
+  new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: ramp })
+);
 ground.receiveShadow = true;
 scene.add(ground);
 
@@ -125,8 +169,18 @@ scene.add(ground);
 
 // Gölet (su)
 {
+  const waterGeo = new THREE.CircleGeometry(16, 40);
+  {                                          // kıyıyı dalgalandır (kusursuz daire değil)
+    const wp = waterGeo.attributes.position;
+    for (let i = 1; i < wp.count; i++) {     // 0 = merkez, dokunma
+      const ang = Math.atan2(wp.getY(i), wp.getX(i));
+      const wob = 1 + Math.sin(ang * 5) * 0.06 + Math.sin(ang * 11) * 0.04;
+      wp.setXY(i, wp.getX(i) * wob, wp.getY(i) * wob);
+    }
+    wp.needsUpdate = true;
+  }
   const water = new THREE.Mesh(
-    new THREE.CircleGeometry(16, 48),
+    waterGeo,
     new THREE.MeshToonMaterial({ color: '#5fb6d6', gradientMap: ramp, transparent: true, opacity: 0.85 })
   );
   water.rotation.x = -Math.PI / 2;
@@ -163,15 +217,19 @@ scene.add(scatterGrass());
 // ---- Ağaçlar (low-poly) -----------------------------------------------
 function makeTree() {
   const g = new THREE.Group();
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.55, 3.2, 6), toon('#8a5a3b'));
-  trunk.position.y = 1.6; trunk.castShadow = true; g.add(trunk);
+  const trunk = new THREE.Mesh(
+    roughen(new THREE.CylinderGeometry(0.35, 0.55, 3.2, 6), 0.08), toon('#8a5a3b'));
+  trunk.position.y = 1.6; trunk.castShadow = true; addOutline(trunk, 0.05); g.add(trunk);
   const greens = ['#5ea24c', '#6cb85a', '#4f9440'];
   for (let i = 0; i < 3; i++) {
     const r = 2.6 - i * 0.55;
-    const blob = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 0), toon(greens[i % 3]));
+    // detay seviyesi 1 + düzensizleştirme → elle çizilmiş yaprak kümesi
+    const blob = new THREE.Mesh(
+      roughen(new THREE.IcosahedronGeometry(r, 1), r * 0.18), toon(greens[i % 3]));
     blob.position.y = 3.4 + i * 1.5;
     blob.castShadow = true; blob.receiveShadow = true;
     blob.rotation.set(Math.random(), Math.random(), Math.random());
+    addOutline(blob, 0.08);
     g.add(blob);
   }
   return g;
@@ -194,20 +252,22 @@ scene.add(trees);
 for (let i = 0; i < 40; i++) {
   const x = (Math.random() - 0.5) * (WORLD - 20);
   const z = (Math.random() - 0.5) * (WORLD - 20);
-  const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.6 + Math.random() * 1.4, 0), toon('#9aa0a6'));
+  const rr = 0.6 + Math.random() * 1.4;
+  const rock = new THREE.Mesh(roughen(new THREE.DodecahedronGeometry(rr, 0), rr * 0.22), toon('#9aa0a6'));
   rock.position.set(x, heightAt(x, z) + 0.2, z);
   rock.rotation.set(Math.random(), Math.random(), Math.random());
   rock.castShadow = true; rock.receiveShadow = true;
+  addOutline(rock, 0.05);
   scene.add(rock);
 }
 
 // ---- Evler (anime kasaba dokunuşu) ------------------------------------
 function makeHouse(bodyColor, roofColor) {
   const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.BoxGeometry(6, 4, 5), toon(bodyColor));
-  body.position.y = 2; body.castShadow = true; body.receiveShadow = true; g.add(body);
-  const roof = new THREE.Mesh(new THREE.ConeGeometry(4.8, 3, 4), toon(roofColor));
-  roof.position.y = 5.5; roof.rotation.y = Math.PI / 4; roof.castShadow = true; g.add(roof);
+  const body = new THREE.Mesh(roughen(new THREE.BoxGeometry(6, 4, 5, 2, 2, 2), 0.06), toon(bodyColor));
+  body.position.y = 2; body.castShadow = true; body.receiveShadow = true; addOutline(body, 0.06); g.add(body);
+  const roof = new THREE.Mesh(roughen(new THREE.ConeGeometry(4.8, 3, 4), 0.07), toon(roofColor));
+  roof.position.y = 5.5; roof.rotation.y = Math.PI / 4; roof.castShadow = true; addOutline(roof, 0.07); g.add(roof);
   const door = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.2, 0.2), toon('#6b4a30'));
   door.position.set(0, 1.1, 2.55); g.add(door);
   return g;
@@ -248,6 +308,8 @@ const parts = {};
   player.add(parts.legL, parts.legR);
 
   player.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  // mürekkep konturu (mevcut parçalara, kontur kopyaları gölge atmaz)
+  [...player.children].forEach((m) => { if (m.isMesh) addOutline(m, 0.035); });
 }
 player.position.set(0, heightAt(0, 0), 0);
 scene.add(player);
@@ -315,7 +377,7 @@ if (isTouch) {
     if (len > R) { dx = dx / len * R; dy = dy / len * R; }
     setKnob(dx, dy);
     touch.x = dx / R;                    // sağ +
-    touch.y = -dy / R;                   // yukarı + (ileri)
+    touch.y = -dy / R;                   // yukarı it → ileri (kameradan uzağa)
   };
   joy.addEventListener('touchstart', (e) => {
     joyId = e.changedTouches[0].identifier; onJoy(e); e.preventDefault();
@@ -354,9 +416,9 @@ function update(dt) {
   const run = keys['ShiftLeft'] || keys['ShiftRight'] || touchRun;
   const speed = run ? 11 : 6;
 
-  // kameraya göre yön
-  const forward = new THREE.Vector3(Math.sin(camYaw), 0, Math.cos(camYaw));
-  const right = new THREE.Vector3(forward.z, 0, -forward.x);
+  // kameraya göre yön (forward = kameranın baktığı yön = ekranda ileri/uzağa)
+  const forward = new THREE.Vector3(-Math.sin(camYaw), 0, -Math.cos(camYaw));
+  const right = new THREE.Vector3(-forward.z, 0, forward.x);
 
   const move = new THREE.Vector3();
   if (keys['KeyW']) move.add(forward);
