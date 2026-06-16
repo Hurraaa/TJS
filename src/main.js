@@ -215,37 +215,69 @@ function scatterGrass(count = 4000) {
 }
 scene.add(scatterGrass());
 
-// ---- Ağaçlar (low-poly) -----------------------------------------------
-function makeTree() {
+// ---- Ağaçlar (low-poly, Ghibli) ---------------------------------------
+function makeRoundTree() {
   const g = new THREE.Group();
   const trunk = new THREE.Mesh(
     roughen(new THREE.CylinderGeometry(0.35, 0.55, 3.2, 6), 0.08), toon('#8a5a3b'));
   trunk.position.y = 1.6; trunk.castShadow = true; addOutline(trunk, 0.05); g.add(trunk);
   const greens = ['#5ea24c', '#6cb85a', '#4f9440'];
-  for (let i = 0; i < 3; i++) {
-    const r = 2.6 - i * 0.55;
-    // detay seviyesi 1 + düzensizleştirme → elle çizilmiş yaprak kümesi
+  // dağınık yaprak topları → dolgun, elle çizilmiş taç
+  const blobs = 4 + (Math.random() * 3 | 0);
+  for (let i = 0; i < blobs; i++) {
+    const r = 1.4 + Math.random() * 1.1;
     const blob = new THREE.Mesh(
-      roughen(new THREE.IcosahedronGeometry(r, 1), r * 0.18), toon(greens[i % 3]));
-    blob.position.y = 3.4 + i * 1.5;
+      roughen(new THREE.IcosahedronGeometry(r, 1), r * 0.16), toon(greens[i % 3]));
+    blob.position.set((Math.random() - 0.5) * 2.4, 3.4 + Math.random() * 2.2, (Math.random() - 0.5) * 2.4);
     blob.castShadow = true; blob.receiveShadow = true;
-    blob.rotation.set(Math.random(), Math.random(), Math.random());
-    addOutline(blob, 0.08);
+    addOutline(blob, 0.07);
     g.add(blob);
   }
   return g;
 }
+function makePine() {
+  const g = new THREE.Group();
+  const trunk = new THREE.Mesh(
+    roughen(new THREE.CylinderGeometry(0.22, 0.4, 1.8, 6), 0.06), toon('#7a5236'));
+  trunk.position.y = 0.9; trunk.castShadow = true; addOutline(trunk, 0.045); g.add(trunk);
+  const greens = ['#3f7d3a', '#4a8c43', '#356b32'];
+  for (let i = 0; i < 4; i++) {
+    const r = 2.1 - i * 0.42;
+    const cone = new THREE.Mesh(roughen(new THREE.ConeGeometry(r, 1.7, 7), r * 0.12), toon(greens[i % 3]));
+    cone.position.y = 1.7 + i * 1.05; cone.castShadow = true; addOutline(cone, 0.06); g.add(cone);
+  }
+  return g;
+}
+function makeBush() {
+  const g = new THREE.Group();
+  const c = ['#5aa34a', '#6cb85a'];
+  for (let i = 0; i < 3; i++) {
+    const r = 0.6 + Math.random() * 0.5;
+    const b = new THREE.Mesh(roughen(new THREE.IcosahedronGeometry(r, 1), r * 0.18), toon(c[i % 2]));
+    b.position.set((Math.random() - 0.5) * 1.2, 0.4 + Math.random() * 0.3, (Math.random() - 0.5) * 1.2);
+    b.castShadow = true; addOutline(b, 0.05); g.add(b);
+  }
+  return g;
+}
 const trees = new THREE.Group();
-for (let i = 0; i < 90; i++) {
+for (let i = 0; i < 110; i++) {
   const x = (Math.random() - 0.5) * (WORLD - 24);
   const z = (Math.random() - 0.5) * (WORLD - 24);
   if (Math.abs(x) < 7) continue;
-  const t = makeTree();
+  const t = Math.random() < 0.42 ? makePine() : makeRoundTree();
   t.position.set(x, heightAt(x, z), z);
-  const s = 0.7 + Math.random() * 0.8;
-  t.scale.setScalar(s);
+  t.scale.setScalar(0.7 + Math.random() * 0.8);
   t.rotation.y = Math.random() * Math.PI;
   trees.add(t);
+}
+for (let i = 0; i < 40; i++) {                 // çalılar
+  const x = (Math.random() - 0.5) * (WORLD - 18);
+  const z = (Math.random() - 0.5) * (WORLD - 18);
+  if (Math.abs(x) < 5) continue;
+  const b = makeBush();
+  b.position.set(x, heightAt(x, z), z);
+  b.scale.setScalar(0.7 + Math.random() * 0.7);
+  trees.add(b);
 }
 scene.add(trees);
 
@@ -262,26 +294,124 @@ for (let i = 0; i < 40; i++) {
   scene.add(rock);
 }
 
-// ---- Evler (anime kasaba dokunuşu) ------------------------------------
-function makeHouse(bodyColor, roofColor) {
+// ---- Evler (Ghibli kasabası) ------------------------------------------
+function makeHouse(bodyColor, roofColor, opts = {}) {
   const g = new THREE.Group();
-  const body = new THREE.Mesh(roughen(new THREE.BoxGeometry(6, 4, 5, 2, 2, 2), 0.06), toon(bodyColor));
-  body.position.y = 2; body.castShadow = true; body.receiveShadow = true; addOutline(body, 0.06); g.add(body);
-  const roof = new THREE.Mesh(roughen(new THREE.ConeGeometry(4.8, 3, 4), 0.07), toon(roofColor));
-  roof.position.y = 5.5; roof.rotation.y = Math.PI / 4; roof.castShadow = true; addOutline(roof, 0.07); g.add(roof);
-  const door = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.2, 0.2), toon('#6b4a30'));
-  door.position.set(0, 1.1, 2.55); g.add(door);
+  const W = opts.W || 6, H = opts.H || 4, D = opts.D || 5;
+
+  const body = new THREE.Mesh(roughen(new THREE.BoxGeometry(W, H, D, 2, 2, 2), 0.05), toon(bodyColor));
+  body.position.y = H / 2; body.castShadow = true; body.receiveShadow = true; addOutline(body, 0.05); g.add(body);
+
+  // Beşik (gable) çatı: iki eğik düzlem (koni piramit yerine gerçek ev çatısı)
+  const overX = 0.6, ridge = 1.9;
+  const half = W / 2 + overX;
+  const slope = Math.hypot(half, ridge);
+  const ang = Math.atan2(ridge, half);
+  const roofMat = toon(roofColor);
+  for (const s of [-1, 1]) {
+    const plane = new THREE.Mesh(roughen(new THREE.BoxGeometry(slope, 0.25, D + 1.2), 0.03), roofMat);
+    plane.position.set(s * half / 2, H + ridge / 2, 0);
+    plane.rotation.z = -s * ang;
+    plane.castShadow = true; plane.receiveShadow = true; addOutline(plane, 0.05); g.add(plane);
+  }
+
+  // Baca
+  const chimney = new THREE.Mesh(roughen(new THREE.BoxGeometry(0.7, 1.8, 0.7), 0.03), toon('#9a6b58'));
+  chimney.position.set(W * 0.28, H + ridge * 0.7, -D * 0.2);
+  chimney.castShadow = true; addOutline(chimney, 0.04); g.add(chimney);
+
+  // Kapı
+  const door = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.2, 0.18), toon('#6b4a30'));
+  door.position.set(0, 1.1, D / 2 + 0.05); addOutline(door, 0.03); g.add(door);
+
+  // Pencereler (çerçeve + cam) — ön yüz ve bir yan
+  const winMat = toon('#bfe6f0'), frameMat = toon('#6b4a30');
+  const addWindow = (px, py, pz, ry) => {
+    const f = new THREE.Group();
+    f.add(new THREE.Mesh(new THREE.BoxGeometry(1.15, 1.15, 0.12), frameMat));
+    f.add(new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.85, 0.16), winMat));
+    f.position.set(px, py, pz); f.rotation.y = ry; g.add(f);
+  };
+  addWindow(-W * 0.28, H * 0.55, D / 2 + 0.04, 0);
+  addWindow(W * 0.28, H * 0.55, D / 2 + 0.04, 0);
+  addWindow(W / 2 + 0.04, H * 0.55, 0, Math.PI / 2);
   return g;
 }
-const houseColors = [['#f0e3c8', '#c0584f'], ['#e8d6b8', '#5a7d8c'], ['#efe1cf', '#7a9b6a']];
-const houseSpots = [[14, -22], [22, 8], [-20, -16], [-30, 18], [10, 30]];
+const housesProc = new THREE.Group();
+const houseColors = [['#f0e3c8', '#c0584f'], ['#e8d6b8', '#5a7d8c'], ['#efe1cf', '#7a9b6a'], ['#f3ddc0', '#b06a3c']];
+const houseSpots = [
+  [14, -22], [22, 8], [-20, -16], [-30, 18], [10, 30],
+  [26, -10], [-14, 26], [34, 20], [-34, -6], [18, 44],
+];
 houseSpots.forEach((spot, i) => {
   const [x, z] = spot;
-  const h = makeHouse(...houseColors[i % houseColors.length]);
+  const [bc, rc] = houseColors[i % houseColors.length];
+  const h = makeHouse(bc, rc, { W: 5 + Math.random() * 2.5, H: 3.5 + Math.random() * 1.5, D: 4.5 + Math.random() * 2 });
   h.position.set(x, heightAt(x, z), z);
   h.rotation.y = Math.random() * Math.PI;
-  scene.add(h);
+  housesProc.add(h);
 });
+scene.add(housesProc);
+
+// ---- CC0 .glb prop desteği --------------------------------------------
+// public/models/ içine house.glb / tree.glb koyarsan otomatik kullanılır;
+// dosya yoksa yukarıdaki prosedürel sürümler sessizce kalır.
+const MODELS_BASE = 'public/models/';
+function toonify(obj) {
+  obj.traverse((o) => {
+    if (!o.isMesh) return;
+    o.castShadow = true; o.receiveShadow = true;
+    const conv = (m) => new THREE.MeshToonMaterial({
+      color: m.color || new THREE.Color(0xffffff), map: m.map || null,
+      gradientMap: ramp, transparent: m.transparent, opacity: m.opacity,
+    });
+    o.material = Array.isArray(o.material) ? o.material.map(conv) : conv(o.material);
+  });
+  return obj;
+}
+function sizeToHeight(obj, target) {                 // boyunu hedefe sabitle, tabanı 0'a hizala
+  obj.updateMatrixWorld(true);
+  let box = new THREE.Box3().setFromObject(obj);
+  obj.scale.multiplyScalar(target / ((box.max.y - box.min.y) || 1));
+  obj.updateMatrixWorld(true);
+  box = new THREE.Box3().setFromObject(obj);
+  obj.position.y -= box.min.y;
+  return obj;
+}
+const propLoader = new GLTFLoader();
+const tryProp = (file) => new Promise((res, rej) =>
+  propLoader.load(MODELS_BASE + file, (g) => res(g.scene), undefined, rej));
+
+tryProp('house.glb').then((proto) => {
+  toonify(proto);
+  housesProc.visible = false;
+  houseSpots.forEach(([x, z]) => {
+    const h = proto.clone();
+    sizeToHeight(h, 5.5);
+    h.position.x = x; h.position.z = z; h.position.y += heightAt(x, z);
+    h.rotation.y = Math.random() * Math.PI;
+    scene.add(h);
+  });
+  console.log('house.glb yüklendi → prosedürel evler değiştirildi');
+}).catch(() => { /* dosya yok: prosedürel kalsın */ });
+
+tryProp('tree.glb').then((proto) => {
+  toonify(proto);
+  trees.visible = false;
+  const g2 = new THREE.Group();
+  for (let i = 0; i < 90; i++) {
+    const x = (Math.random() - 0.5) * (WORLD - 24);
+    const z = (Math.random() - 0.5) * (WORLD - 24);
+    if (Math.abs(x) < 7) continue;
+    const t = proto.clone();
+    sizeToHeight(t, 5 + Math.random() * 3);
+    t.position.x = x; t.position.z = z; t.position.y += heightAt(x, z);
+    t.rotation.y = Math.random() * Math.PI;
+    g2.add(t);
+  }
+  scene.add(g2);
+  console.log('tree.glb yüklendi → prosedürel ağaçlar değiştirildi');
+}).catch(() => { /* dosya yok */ });
 
 // ---- Karakter (low-poly, prosedürel yürüyüş) --------------------------
 const player = new THREE.Group();
@@ -349,7 +479,7 @@ function emote(name) {
   current = a;
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v10 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v11 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
