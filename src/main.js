@@ -1474,7 +1474,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v50 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v51 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1662,20 +1662,22 @@ addEventListener('keydown', (e) => {
 });
 addEventListener('keyup', (e) => { keys[e.code] = false; });
 
-// GTA tarzı: yatay (yön) kamera otomatik takip eder; sadece DİKEY bakış manuel.
-// Ekranı sürükle → yukarı/aşağı bak. (Yön otomatik kaldığı için sürükleme sağ/sol etkilemez.)
-let dragId = null, dragLastY = 0;
+// GTA tarzı: sol başparmak hareket; ekranı (sağ tarafı) sürükle → kamerayı
+// yatay + dikey çevir. Manuel çevirince otomatik takip kısa süre durur.
+let dragId = null, dragLastX = 0, dragLastY = 0;
+let camManualT = 0;                              // >0 iken otomatik takip beklemede
 renderer.domElement.addEventListener('pointerdown', (e) => {
   if (dragId !== null) return;
-  dragId = e.pointerId; dragLastY = e.clientY;
+  dragId = e.pointerId; dragLastX = e.clientX; dragLastY = e.clientY;
 });
 addEventListener('pointerup', (e) => { if (e.pointerId === dragId) dragId = null; });
 addEventListener('pointercancel', (e) => { if (e.pointerId === dragId) dragId = null; });
 addEventListener('pointermove', (e) => {
   if (e.pointerId !== dragId) return;
-  // yukarı sürükle (clientY azalır) → yukarı bak (camPitch azalır → kamera alçalır, yukarısı görünür)
-  camPitch = THREE.MathUtils.clamp(camPitch + (e.clientY - dragLastY) * 0.004, -0.25, 1.1);
-  dragLastY = e.clientY;
+  camYaw -= (e.clientX - dragLastX) * 0.005;     // sağ/sol → yön
+  camPitch = THREE.MathUtils.clamp(camPitch + (e.clientY - dragLastY) * 0.004, -0.25, 1.15);  // yukarı/aşağı
+  dragLastX = e.clientX; dragLastY = e.clientY;
+  camManualT = 1.6;                              // bir süre otomatik takip yok
 });
 
 addEventListener('wheel', (e) => {
@@ -2017,12 +2019,14 @@ function update(dt) {
     parts.torso.position.y = 1.25 + bob;
   }
 
-  // GTA tarzı otomatik kamera: hareket edince yumuşakça karakterin arkasına geç
-  if (moving && speed2d > 0.5) {
+  // GTA tarzı otomatik kamera: hareket edince yumuşakça arkaya geç
+  // (elle kamera çevirdiysen kısa süre devreye girmez)
+  if (camManualT > 0) camManualT -= dt;
+  if (moving && speed2d > 0.5 && camManualT <= 0) {
     const targetYaw = facing - Math.PI;           // kamera, gidiş yönünün arkasında
     let dy = targetYaw - camYaw;
     dy = Math.atan2(Math.sin(dy), Math.cos(dy));
-    camYaw += dy * Math.min(1, dt * 1.3);          // GTA gibi gecikmeli arkaya geçiş
+    camYaw += dy * Math.min(1, dt * 1.3);          // gecikmeli arkaya geçiş
   }
 
   if (sitting && sitSpot && sitSpot.type === 'swing' && swing) {
