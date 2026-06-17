@@ -276,7 +276,7 @@ function setTimeOfDay(t) {
   if (todIconEl) todIconEl.textContent = day > 0.6 ? '☀️' : (day > 0.18 ? '🌅' : '🌙');
 }
 // Otomatik gün-gece döngüsü (slider elle de ayarlanabilir)
-let todTime = 0.62, todDir = 1;
+let todTime = 0.62, todDir = 1, dayCount = 0;
 const todSliderEl = document.getElementById('tod');
 todIconEl = document.getElementById('todIcon');
 if (todSliderEl) {
@@ -1424,6 +1424,43 @@ player.add(proc);
 player.position.set(0, heightAt(0, 0), 0);
 scene.add(player);
 
+// ---- Meşale (gece elde taşınır, etrafı aydınlatır) --------------------
+let torchOn = false, torchLight = null, torchFlameMat = null, torchGroup = null;
+{
+  const g = new THREE.Group();
+  const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.95, 6), toon('#5a3a22'));
+  handle.rotation.z = 0.32; addOutline(handle, 0.02); g.add(handle);
+  const wrap = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.08, 0.26, 7), toon('#3a2a1a'));
+  wrap.position.set(0.08, 0.52, 0); g.add(wrap);
+  torchFlameMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    uniforms: { time: { value: 0 }, c1: { value: new THREE.Color('#ff6a1e') }, c2: { value: new THREE.Color('#ffd54a') } },
+    vertexShader: `varying vec2 vUv; uniform float time; void main(){ vUv=uv; vec3 p=position; float k=uv.y;
+      p.x += sin(time*12.0 + p.y*6.0)*0.05*k; p.z += cos(time*10.0)*0.05*k;
+      gl_Position = projectionMatrix*modelViewMatrix*vec4(p,1.0); }`,
+    fragmentShader: `varying vec2 vUv; uniform float time; uniform vec3 c1; uniform vec3 c2; void main(){
+      float fl = 0.82 + 0.18*sin(time*25.0);
+      float body = smoothstep(1.0, 0.1, vUv.y) * fl;
+      vec3 col = mix(c1, c2, vUv.y);
+      gl_FragColor = vec4(col, body * (0.55 + 0.45*smoothstep(0.5,0.0,abs(vUv.x-0.5)))); }`,
+  });
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.55, 8, 1, true), torchFlameMat);
+  flame.position.set(0.16, 0.82, 0); g.add(flame);
+  torchLight = new THREE.PointLight('#ff8a3a', 0, 18, 2);
+  torchLight.position.set(0.16, 0.85, 0); g.add(torchLight);
+  g.position.set(0.55, 1.35, 0.4);        // sağ el, hafif önde
+  g.visible = false; player.add(g); torchGroup = g;
+}
+function toggleTorch() { torchOn = !torchOn; torchGroup.visible = torchOn; }
+addEventListener('keydown', (e) => { if (!e.repeat && e.code === 'KeyM') toggleTorch(); });
+{
+  const tb = document.getElementById('torchBtn');
+  if (tb) {
+    tb.addEventListener('click', () => { toggleTorch(); tb.classList.toggle('active', torchOn); });
+    tb.addEventListener('touchstart', (e) => { toggleTorch(); tb.classList.toggle('active', torchOn); e.preventDefault(); }, { passive: false });
+  }
+}
+
 // ---- Gerçek karakter modeli (glTF, hazır animasyonlu) -----------------
 let mixer = null;
 let playerModel = null;          // oturunca hafif yaslamak için
@@ -1475,7 +1512,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v53 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v54 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1572,11 +1609,13 @@ const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v
       colliders.push({ x, z, r: 0.6 });
 
       // Selama karşılık: ayakta duranlar el sallar (oturanlar 'evet' diye başını sallar)
-      const rec = { x, z, g, turn: null, greet: null };
+      const rec = { x, z, g, turn: null, greet: null, greetedDay: -1 };
       const backClipName = clip === 'sitting' ? 'yes' : 'wave';
       const backClip = byName[backClipName];
       if (backClip && baseAction) {
         rec.greet = () => {
+          if (rec.greetedDay === dayCount) return;   // bugün zaten selamlaştık
+          rec.greetedDay = dayCount;
           rec.turn = Math.atan2(player.position.x - x, player.position.z - z);  // önce yüzünü oyuncuya dön
           const w = mx.clipAction(backClip);
           baseAction.fadeOut(0.2);
@@ -1844,7 +1883,7 @@ function update(dt) {
   // Otomatik saat: gece↔gündüz arasında yavaşça gidip gelir
   todTime += todDir * dt * 0.012;               // ~tek yön 80sn
   if (todTime >= 1) { todTime = 1; todDir = -1; }
-  else if (todTime <= 0) { todTime = 0; todDir = 1; }
+  else if (todTime <= 0) { todTime = 0; todDir = 1; dayCount++; }   // gün doğdu = yeni gün
   setTimeOfDay(todTime);
   if (todSliderEl) todSliderEl.value = String(todTime);
 
@@ -2345,6 +2384,12 @@ function update(dt) {
     const sc = 1 + rp.t * 6; rp.mesh.scale.set(sc, sc, sc);
     rp.mesh.material.opacity = Math.max(0, 0.6 * (1 - rp.t / 1.3));
     if (rp.t > 1.3) { scene.remove(rp.mesh); rp.mesh.material.dispose(); lakeRipples.splice(i, 1); }
+  }
+
+  // Meşale alevi + titreyen ışık
+  if (torchOn && torchFlameMat) {
+    torchFlameMat.uniforms.time.value += dt;
+    torchLight.intensity = 7 + Math.sin(elapsed * 20) * 2 + Math.sin(elapsed * 33) * 1;
   }
 
   clouds.rotation.y += dt * 0.005;

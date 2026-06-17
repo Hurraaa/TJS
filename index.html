@@ -88,6 +88,15 @@
       border: 1px solid rgba(255,255,255,.7); box-shadow: 0 4px 14px rgba(0,0,0,.16);
     }
     #infoBtn.active { background: rgba(120,200,227,.9); }
+    /* Meşale aç/kapa (sağ üst, info altında) */
+    #torchBtn {
+      position: fixed; right: 14px; top: 60px; z-index: 9;
+      width: 38px; height: 38px; border-radius: 50%; cursor: pointer; user-select: none;
+      display: grid; place-items: center; font-size: 18px;
+      background: rgba(255,255,255,.7); backdrop-filter: blur(6px);
+      border: 1px solid rgba(255,255,255,.7); box-shadow: 0 4px 14px rgba(0,0,0,.16);
+    }
+    #torchBtn.active { background: rgba(255,170,70,.9); }
     #status {
       position: fixed; left: 16px; top: 14px; z-index: 8;
       font-family: ui-monospace, monospace; font-size: 12px;
@@ -187,7 +196,7 @@
 <body>
   <div id="app"></div>
 
-  <div id="status">v53 · karakter modeli yükleniyor…</div>
+  <div id="status">v54 · karakter modeli yükleniyor…</div>
   <div id="paper"></div>
   <div id="vignette"></div>
   <div id="warm"></div>
@@ -196,6 +205,7 @@
   <div id="stoneBtn">🪨 Taş at</div>
   <div id="goalMsg">⚽ GOL!</div>
   <div id="infoBtn">i</div>
+  <div id="torchBtn">🔦</div>
 
   <div id="tod-bar">
     <span class="ic">🌙</span>
