@@ -705,12 +705,13 @@ function makeCampfire(fx, fz) {
     log.position.y = 0.25; log.rotation.z = Math.PI / 2.3;
     log.rotation.y = (i / 4) * Math.PI; log.castShadow = true; addOutline(log, 0.03); g.add(log);
   }
-  // Ateş çevresinde kütük oturaklar (ateşe dönük)
+  // Ateş çevresinde kütük oturaklar (ateşe TEĞET, üstüne oturulur)
+  const SEAT_R = 2.5;
   for (let i = 0; i < 3; i++) {
     const a = (i / 3) * Math.PI * 2 + 0.5;
     const b = makeLogBench(2.0);
-    b.position.set(Math.cos(a) * 2.7, 0, Math.sin(a) * 2.7);
-    b.rotation.y = -a;
+    b.position.set(Math.cos(a) * SEAT_R, 0, Math.sin(a) * SEAT_R);
+    b.rotation.y = a + Math.PI / 2;            // kütük ateşe teğet (yatay)
     g.add(b);
   }
 
@@ -808,10 +809,12 @@ const VISTA = { x: -10, z: 40 };
 
 // ---- Oturma noktaları (kamp ateşi + manzara) --------------------------
 const _fy = heightAt(CAMPFIRE.x, CAMPFIRE.z);
+const _fa = (1 / 3) * Math.PI * 2 + 0.5;           // boş kütük bank (1) açısı
+const _fbx = CAMPFIRE.x + Math.cos(_fa) * 2.5, _fbz = CAMPFIRE.z + Math.sin(_fa) * 2.5;
 const SITSPOTS = [
-  { x: CAMPFIRE.x, z: CAMPFIRE.z, type: 'fire', snap: false, range: 3.4,
+  { x: _fbx, z: _fbz, type: 'fire', snap: true, range: 3.6, lift: 0.5,
     face: { x: CAMPFIRE.x, z: CAMPFIRE.z }, look: new THREE.Vector3(CAMPFIRE.x, _fy + 1.0, CAMPFIRE.z), back: 3.6 },
-  { x: VISTA.x, z: VISTA.z, type: 'vista', snap: true, range: 3.0,
+  { x: VISTA.x, z: VISTA.z, type: 'vista', snap: true, range: 3.0, lift: 0,
     face: { x: -95, z: 40 }, look: new THREE.Vector3(-95, 20, 40), back: 5.5 },
 ];
 
@@ -1169,6 +1172,7 @@ let mixer = null;
 const actions = {};
 const npcMixers = [];          // NPC animasyon mikserleri
 const npcs = [];               // {x, z, greet} — selama karşılık verenler
+const kids = [];               // koşup zıplayan çocuklar
 let current = null;
 let emoting = null;            // sürekli emote (dans), boştayken oynar
 let oneShotActive = false;     // tek seferlik emote (el salla) oynuyor mu
@@ -1205,7 +1209,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v36 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v37 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1273,7 +1277,7 @@ const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v
     });
 
     // ---- NPC'ler (aynı modelden klon, farklı animasyonlar) ----
-    const spawnNPC = (x, z, clip, faceX, faceZ) => {
+    const spawnNPC = (x, z, clip, faceX, faceZ, lift = 0) => {
       const npc = SkeletonUtils.clone(model);     // ölçek + ayak hizası model'den gelir
       // Her NPC'ye kendi rengi (malzemeleri klonla, tona kaydır) → birbirinin aynısı olmasın
       const tint = new THREE.Color().setHSL(Math.random(), 0.5, 0.6);
@@ -1284,7 +1288,7 @@ const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v
       });
       const g = new THREE.Group(); g.add(npc);
       g.scale.setScalar(0.9 + Math.random() * 0.2);   // boy çeşitliliği
-      g.position.set(x, heightAt(x, z), z);
+      g.position.set(x, heightAt(x, z) + lift, z);
       g.rotation.y = (faceX !== undefined) ? Math.atan2(faceX - x, faceZ - z) : Math.random() * Math.PI * 2;
       scene.add(g);
       const mx = new THREE.AnimationMixer(npc);
@@ -1319,9 +1323,12 @@ const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v
       }
       npcs.push({ x, z, greet });
     };
-    // ateş başında oturanlar
-    spawnNPC(CAMPFIRE.x + 1.7, CAMPFIRE.z + 1.4, 'sitting', CAMPFIRE.x, CAMPFIRE.z);
-    spawnNPC(CAMPFIRE.x - 1.8, CAMPFIRE.z - 0.9, 'sitting', CAMPFIRE.x, CAMPFIRE.z);
+    // ateş başında kütüklerin ÜSTÜNDE oturanlar (bank 0 ve 2; bank 1 oyuncuya)
+    const sa = (i) => (i / 3) * Math.PI * 2 + 0.5;
+    const bx = (i) => CAMPFIRE.x + Math.cos(sa(i)) * 2.5;
+    const bz = (i) => CAMPFIRE.z + Math.sin(sa(i)) * 2.5;
+    spawnNPC(bx(0), bz(0), 'sitting', CAMPFIRE.x, CAMPFIRE.z, 0.5);
+    spawnNPC(bx(2), bz(2), 'sitting', CAMPFIRE.x, CAMPFIRE.z, 0.5);
     // manzarada oturan
     spawnNPC(VISTA.x + 1.5, VISTA.z + 0.5, 'sitting', -95, 40);
     // köyde selam veren / boşta / dans eden
@@ -1329,6 +1336,26 @@ const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v
     spawnNPC(houseSpots[3][0] - 3, houseSpots[3][1] + 3, 'idle');
     spawnNPC(houseSpots[6][0] + 3, houseSpots[6][1] - 3, 'dance');
     spawnNPC(6, -6, 'idle');
+
+    // ---- Oynayan çocuklar (küçük, koşup birbirini kovalayan, zıplayan) ----
+    const spawnKid = (x, z) => {
+      const k = SkeletonUtils.clone(model);
+      const tint = new THREE.Color().setHSL(Math.random(), 0.65, 0.62);
+      k.traverse((o) => {
+        if (!o.isMesh) return;
+        const recolor = (m) => { const cm = m.clone(); if (cm.color) cm.color.lerp(tint, 0.55); return cm; };
+        o.material = Array.isArray(o.material) ? o.material.map(recolor) : recolor(o.material);
+      });
+      const g = new THREE.Group(); g.add(k);
+      g.scale.setScalar(0.48 + Math.random() * 0.1);    // çocuk boyu
+      g.position.set(x, heightAt(x, z), z);
+      scene.add(g);
+      const mx = new THREE.AnimationMixer(k);
+      const runA = byName['running'] ? mx.clipAction(byName['running']) : null;
+      if (runA) { runA.time = Math.random() * runA.getClip().duration; runA.play(); }
+      kids.push({ g, mx, tx: x, tz: z, vy: 0, grounded: true, jumpCd: Math.random() * 3, retarget: 0 });
+    };
+    for (let i = 0; i < 4; i++) spawnKid(-6 + Math.random() * 16, -16 + Math.random() * 14);
   };
 
   // Sırayla CDN'leri dene; hepsi başarısızsa basit gövdeye düş
@@ -1569,6 +1596,7 @@ function update(dt) {
   vy -= 26 * dt;
   player.position.y += vy * dt;
   if (player.position.y <= groundY) { player.position.y = groundY; vy = 0; grounded = true; }
+  if (sitting && sitSpot && sitSpot.lift) player.position.y = groundY + sitSpot.lift;  // kütüğün üstünde
 
   // yönelme (yumuşak)
   let d = facing - player.rotation.y;
@@ -1753,6 +1781,40 @@ function update(dt) {
 
   // NPC animasyonları
   for (let i = 0; i < npcMixers.length; i++) npcMixers[i].update(dt);
+
+  // Oynayan çocuklar: birbirini/rastgele noktayı kovala + ara sıra zıpla
+  const klim = WORLD / 2 - 8;
+  for (let i = 0; i < kids.length; i++) {
+    const k = kids[i];
+    k.retarget -= dt;
+    if (k.retarget <= 0) {
+      if (kids.length > 1 && Math.random() < 0.7) {
+        const o = kids[(Math.random() * kids.length) | 0];
+        k.tx = o.g.position.x; k.tz = o.g.position.z;
+      } else {
+        k.tx = THREE.MathUtils.clamp((Math.random() - 0.5) * 60, -klim, klim);
+        k.tz = THREE.MathUtils.clamp(-12 + (Math.random() - 0.5) * 60, -klim, klim);
+      }
+      k.retarget = 1.4 + Math.random() * 2.2;
+    }
+    let dx = k.tx - k.g.position.x, dz = k.tz - k.g.position.z;
+    const dist = Math.hypot(dx, dz) || 1;
+    if (dist > 1.3) {
+      dx /= dist; dz /= dist;
+      k.g.position.x = THREE.MathUtils.clamp(k.g.position.x + dx * 6.5 * dt, -klim, klim);
+      k.g.position.z = THREE.MathUtils.clamp(k.g.position.z + dz * 6.5 * dt, -klim, klim);
+      k.g.rotation.y = Math.atan2(dx, dz);
+    } else { k.retarget = 0; }
+    // zıplama
+    k.jumpCd -= dt;
+    if (k.grounded && k.jumpCd <= 0) { k.vy = 7; k.grounded = false; k.jumpCd = 1.5 + Math.random() * 3; }
+    k.vy -= 26 * dt;
+    const gy = heightAt(k.g.position.x, k.g.position.z);
+    let yy = k.g.position.y + k.vy * dt;
+    if (yy <= gy) { yy = gy; k.vy = 0; k.grounded = true; }
+    k.g.position.y = yy;
+    k.mx.update(dt);
+  }
 
   clouds.rotation.y += dt * 0.005;
 }
