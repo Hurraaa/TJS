@@ -171,6 +171,21 @@ scene.add(ground);
   scene.add(path);
 }
 
+// Yol kenarı fenerleri (gece yanar)
+for (let i = 0; i < 11; i++) {
+  const z = -WORLD / 2 + 18 + i * ((WORLD - 36) / 10);
+  const x = (i % 2 === 0 ? -1 : 1) * 4.4;
+  const gy = heightAt(x, z);
+  const g = new THREE.Group(); g.position.set(x, gy, z); scene.add(g);
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 2.2, 6), toon('#4a3a2a'));
+  post.position.y = 1.1; post.castShadow = true; addOutline(post, 0.03); g.add(post);
+  const lampMat = new THREE.MeshToonMaterial({ color: '#5a4326', emissive: new THREE.Color('#ffcf6b'), emissiveIntensity: 0, gradientMap: ramp });
+  const lamp = new THREE.Mesh(new THREE.IcosahedronGeometry(0.16, 0), lampMat);
+  lamp.position.y = 2.25; g.add(lamp);
+  glowMats.push({ mat: lampMat, base: 1.8, phase: Math.random() * 6.28 });
+  colliders.push({ x, z, r: 0.3 });
+}
+
 // Göl (yansımalı su — three.js Water)
 const LAKE = { x: -46, z: 40, r: 20 };
 let water = null;
@@ -1163,11 +1178,14 @@ function makeHouse(bodyColor, roofColor, opts = {}) {
   const door = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.2, 0.18), toon('#6b4a30'));
   door.position.set(0, 1.1, D / 2 + 0.05); addOutline(door, 0.03); g.add(door);
 
-  // Pencereler (çerçeve + cam) — gece sıcak ışıkla yanar (perde arkası gibi)
+  // Pencereler — gece sıcak ışıkla yanar; bazı evler karanlık, renk/parlaklık çeşitli
+  const warmHexes = ['#ffcf7a', '#ffb85a', '#ffe0a0', '#ffc266'];
+  const lit = Math.random() < 0.72;
   const winMat = new THREE.MeshToonMaterial({
-    color: '#cfe6f0', emissive: new THREE.Color('#ffcf7a'), emissiveIntensity: 0, gradientMap: ramp,
+    color: '#cfe6f0', emissive: new THREE.Color(warmHexes[(Math.random() * warmHexes.length) | 0]),
+    emissiveIntensity: 0, gradientMap: ramp,
   });
-  glowMats.push({ mat: winMat, base: 1.15, phase: Math.random() * 6.28 });
+  glowMats.push({ mat: winMat, base: lit ? (0.85 + Math.random() * 0.6) : 0, phase: Math.random() * 6.28 });
   const frameMat = toon('#6b4a30');
   const addWindow = (px, py, pz, ry) => {
     const f = new THREE.Group();
@@ -1356,7 +1374,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v44 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v45 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
