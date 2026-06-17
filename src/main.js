@@ -735,6 +735,51 @@ for (let i = 0; i < 40; i++) {
   if (rr > 0.9) colliders.push({ x, z, r: rr * 0.85 });   // sadece büyük kayalar
 }
 
+// ---- Biyolüminesan flora (gece parlar) --------------------------------
+const glowMats = [];
+function makeCrystalGeo() {
+  const parts = [];
+  for (let i = 0; i < 4; i++) {
+    const o = new THREE.OctahedronGeometry(0.3, 0);
+    o.scale(0.5, 1.7 + Math.random() * 1.3, 0.5);
+    o.rotateY(Math.random() * Math.PI);
+    o.translate((Math.random() - 0.5) * 0.45, 0.85, (Math.random() - 0.5) * 0.45);
+    parts.push(o);
+  }
+  return mergeGeometries(parts, false);
+}
+function makeGlowMushroomGeo() {
+  const stem = new THREE.CylinderGeometry(0.07, 0.11, 0.5, 6); stem.translate(0, 0.25, 0);
+  const cap = new THREE.SphereGeometry(0.34, 10, 7, 0, Math.PI * 2, 0, Math.PI * 0.55); cap.translate(0, 0.5, 0);
+  return mergeGeometries([stem, cap], false);
+}
+function scatterGlow(geo, baseHex, glowHex, count, glowBase) {
+  const mat = new THREE.MeshToonMaterial({
+    color: baseHex, emissive: new THREE.Color(glowHex), emissiveIntensity: 0, gradientMap: ramp,
+  });
+  const mesh = new THREE.InstancedMesh(geo, mat, count);
+  mesh.castShadow = false;
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3();
+  let n = 0;
+  for (let i = 0; i < count; i++) {
+    const x = (Math.random() - 0.5) * (WORLD - 30);
+    const z = (Math.random() - 0.5) * (WORLD - 30);
+    if (Math.abs(x) < 6 || nearBuilt(x, z, 1)) continue;
+    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.random() * Math.PI * 2);
+    const sc = 0.7 + Math.random() * 0.9;
+    s.set(sc, sc * (0.8 + Math.random() * 0.6), sc);
+    m.compose(new THREE.Vector3(x, heightAt(x, z), z), q, s);
+    mesh.setMatrixAt(n++, m);
+  }
+  mesh.count = n; mesh.instanceMatrix.needsUpdate = true;
+  scene.add(mesh);
+  glowMats.push({ mat, base: glowBase, phase: Math.random() * 6.28 });
+}
+scatterGlow(makeCrystalGeo(), '#1d5e74', '#3fe3ff', 90, 1.5);      // mavi kristal
+scatterGlow(makeCrystalGeo(), '#3a2a66', '#b06bff', 70, 1.5);      // mor kristal
+scatterGlow(makeGlowMushroomGeo(), '#2a6b4a', '#65ff9e', 80, 1.2); // yeşil mantar
+scatterGlow(makeGlowMushroomGeo(), '#6b2a55', '#ff6bd0', 60, 1.2); // pembe mantar
+
 // ---- Evler (Ghibli kasabası) ------------------------------------------
 function makeHouse(bodyColor, roofColor, opts = {}) {
   const g = new THREE.Group();
@@ -934,7 +979,7 @@ function emote(name) {
   current = a;
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v27 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v28 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1390,6 +1435,12 @@ function update(dt) {
   if (firefliesMat) {
     firefliesMat.uniforms.time.value += dt;
     firefliesMat.uniforms.night.value = nightAmount;
+  }
+
+  // Biyolüminesan flora: geceleri parlar (hafif nabız)
+  for (let i = 0; i < glowMats.length; i++) {
+    const g = glowMats[i];
+    g.mat.emissiveIntensity = nightAmount * g.base * (0.78 + 0.22 * Math.sin(elapsed * 2 + g.phase));
   }
 
   clouds.rotation.y += dt * 0.005;
