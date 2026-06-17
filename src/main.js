@@ -1163,8 +1163,12 @@ function makeHouse(bodyColor, roofColor, opts = {}) {
   const door = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.2, 0.18), toon('#6b4a30'));
   door.position.set(0, 1.1, D / 2 + 0.05); addOutline(door, 0.03); g.add(door);
 
-  // Pencereler (çerçeve + cam) — ön yüz ve bir yan
-  const winMat = toon('#bfe6f0'), frameMat = toon('#6b4a30');
+  // Pencereler (çerçeve + cam) — gece sıcak ışıkla yanar (perde arkası gibi)
+  const winMat = new THREE.MeshToonMaterial({
+    color: '#cfe6f0', emissive: new THREE.Color('#ffcf7a'), emissiveIntensity: 0, gradientMap: ramp,
+  });
+  glowMats.push({ mat: winMat, base: 1.15, phase: Math.random() * 6.28 });
+  const frameMat = toon('#6b4a30');
   const addWindow = (px, py, pz, ry) => {
     const f = new THREE.Group();
     f.add(new THREE.Mesh(new THREE.BoxGeometry(1.15, 1.15, 0.12), frameMat));
@@ -1352,7 +1356,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v43 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v44 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1770,6 +1774,8 @@ function update(dt) {
         swing.rideLeft -= dt;
         if (swing.rideLeft <= 0) { swing.rider.mode = 'play'; swing.rider = null; }
       }
+      // binici eve gittiyse/oyuna döndüyse salıncağı bırak
+      if (swing.rider && swing.rider.mode !== 'swinging' && swing.rider.mode !== 'toSwing') swing.rider = null;
     }
     const occ = playerRiding ? 'player' : (swing.rider && swing.rider.mode === 'swinging' ? swing.rider : null);
     const ang = occ ? 0.6 * Math.sin(elapsed * 1.9) : 0.12 * Math.sin(elapsed * 1.0);
@@ -1979,16 +1985,28 @@ function update(dt) {
   // NPC animasyonları
   for (let i = 0; i < npcMixers.length; i++) npcMixers[i].update(dt);
 
-  // Oynayan çocuklar: birbirini/rastgele noktayı kovala + ara sıra zıpla
+  // Oynayan çocuklar: gündüz oyna, gece eve git
   const klim = WORLD / 2 - 8;
+  const isNight = nightAmount > 0.55;
   for (let i = 0; i < kids.length; i++) {
     const k = kids[i];
+    // gece → eve git; sabah → tekrar çık
+    if (isNight && k.mode !== 'goHome' && k.mode !== 'home') {
+      k.mode = 'goHome';
+      k.home = houseSpots[(Math.random() * houseSpots.length) | 0];
+    } else if (!isNight && k.mode === 'home') {
+      k.g.visible = true; k.mode = 'play';
+    }
+    if (k.mode === 'home') continue;                  // evde (gizli)
+
     // Salıncakta: hareket etme, sadece sallan (konum salıncak bloğunda ayarlanır)
     if (k.mode === 'swinging') { setKidAnim(k, 'idle'); k.mx.update(dt); continue; }
 
     k.g.rotation.x = 0;                              // salıncaktan kalkınca eğimi sıfırla
     setKidAnim(k, 'run');
-    if (k.mode === 'toSwing') {                       // salıncağa yürü
+    if (k.mode === 'goHome') {                         // eve doğru
+      k.tx = k.home[0]; k.tz = k.home[1] + 3;
+    } else if (k.mode === 'toSwing') {                // salıncağa yürü
       k.tx = SWING.x; k.tz = SWING.z;
     } else {
       k.retarget -= dt;
@@ -2014,6 +2032,7 @@ function update(dt) {
       k.g.position.z = THREE.MathUtils.clamp(k.g.position.z + dz * 6.5 * dt, -klim, klim);
       k.g.rotation.y = Math.atan2(dx, dz);
     } else if (k.mode === 'toSwing') { k.mode = 'swinging'; }   // salıncağa vardı
+    else if (k.mode === 'goHome') { k.g.visible = false; k.mode = 'home'; }  // eve girdi
     else { k.retarget = 0; }
     // zıplama
     k.jumpCd -= dt;
