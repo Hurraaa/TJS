@@ -499,7 +499,7 @@ function makeButterfly(color, spotColor) {
     return w;
   };
   const wl = mkWing(1), wr = mkWing(-1);
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.5, 4, 6), toon('#2b2320'));
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.24, 4, 6), toon('#2b2320'));
   body.rotation.x = Math.PI / 2;
   g.add(wl, wr, body);
   g.userData = { wl, wr };
@@ -590,7 +590,11 @@ function makeCampfire(fx, fz) {
   g.add(embers);
 
   colliders.push({ x: fx, z: fz, r: 1.5 });
-  fireParts.push({ flames: [flameOuter.material, flameInner.material], light, embers: emGeo });
+  fireParts.push({
+    flames: [flameOuter.material, flameInner.material],
+    flameMeshes: [flameOuter, flameInner],
+    light, embers: emGeo, embersPoints: embers,
+  });
 }
 const CAMPFIRE = { x: 12, z: 10 };
 makeCampfire(CAMPFIRE.x, CAMPFIRE.z);
@@ -921,7 +925,7 @@ function emote(name) {
   current = a;
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v24 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v25 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1146,6 +1150,17 @@ if (sitPromptEl) {
   sitPromptEl.addEventListener('touchstart', (e) => { toggleSit(); e.preventDefault(); }, { passive: false });
 }
 
+// Ateş yanık/sönük — gece otomatik yanar, sabah söner; elle de yakılır/söndürülür
+let fireOverride = null;        // null = otomatik · true = yanık · false = sönük
+let fireOn = true;
+function toggleFire() { fireOverride = !fireOn; }
+addEventListener('keydown', (e) => { if (!e.repeat && e.code === 'KeyG') toggleFire(); });
+const fireBtnEl = document.getElementById('fireBtn');
+if (fireBtnEl) {
+  fireBtnEl.addEventListener('click', toggleFire);
+  fireBtnEl.addEventListener('touchstart', (e) => { toggleFire(); e.preventDefault(); }, { passive: false });
+}
+
 function update(dt) {
   const run = keys['ShiftLeft'] || keys['ShiftRight'] || touchRun;
   const speed = run ? 11 : 6;
@@ -1223,7 +1238,7 @@ function update(dt) {
     else sitPromptEl.classList.remove('show');
   }
   if (warmEl) {
-    const warmth = sitting ? 1 : THREE.MathUtils.clamp(1 - (fdist - 2) / 4, 0, 0.6);
+    const warmth = (fireOn ? 1 : 0) * (sitting ? 1 : THREE.MathUtils.clamp(1 - (fdist - 2) / 4, 0, 0.6));
     warmEl.style.opacity = warmth.toFixed(2);
   }
 
@@ -1263,14 +1278,30 @@ function update(dt) {
     camYaw += dy * Math.min(1, dt * 2.2);
   }
 
-  // kamera takip (otururken biraz yaklaşır)
-  camTarget.lerp(new THREE.Vector3(player.position.x, player.position.y + 2.2, player.position.z), 1 - Math.pow(0.0008, dt));
-  const effDist = sitting ? Math.min(camDist, 7) : camDist;
-  const cx = camTarget.x + Math.sin(camYaw) * Math.cos(camPitch) * effDist;
-  const cy = camTarget.y + Math.sin(camPitch) * effDist;
-  const cz = camTarget.z + Math.cos(camYaw) * Math.cos(camPitch) * effDist;
-  camera.position.lerp(new THREE.Vector3(cx, cy, cz), 1 - Math.pow(0.001, dt));
-  camera.lookAt(camTarget);
+  if (sitting) {
+    // Sinematik ateş kamerası: oyuncunun omzundan ateşe bakar
+    const fy = heightAt(CAMPFIRE.x, CAMPFIRE.z);
+    let dx = player.position.x - CAMPFIRE.x, dz = player.position.z - CAMPFIRE.z;
+    const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
+    const side = 1.6;
+    const desired = new THREE.Vector3(
+      player.position.x + dx * 3.6 - dz * side,
+      player.position.y + 2.6,
+      player.position.z + dz * 3.6 + dx * side);
+    camera.position.lerp(desired, 1 - Math.pow(0.0025, dt));
+    camTarget.lerp(new THREE.Vector3((player.position.x + CAMPFIRE.x) / 2, fy + 1.1, (player.position.z + CAMPFIRE.z) / 2), 1 - Math.pow(0.0025, dt));
+    camera.lookAt(camTarget);
+    // Kalkınca yumuşak geçiş için yaw'ı güncel tut
+    camYaw = Math.atan2(camera.position.x - player.position.x, camera.position.z - player.position.z);
+  } else {
+    // GTA tarzı takip kamerası
+    camTarget.lerp(new THREE.Vector3(player.position.x, player.position.y + 2.2, player.position.z), 1 - Math.pow(0.0008, dt));
+    const cx = camTarget.x + Math.sin(camYaw) * Math.cos(camPitch) * camDist;
+    const cy = camTarget.y + Math.sin(camPitch) * camDist;
+    const cz = camTarget.z + Math.cos(camYaw) * Math.cos(camPitch) * camDist;
+    camera.position.lerp(new THREE.Vector3(cx, cy, cz), 1 - Math.pow(0.001, dt));
+    camera.lookAt(camTarget);
+  }
 
   // Güneşi gökyüzüyle aynı yönden tut (gölge yönü = gökyüzü güneşi)
   sun.target.position.copy(player.position);
@@ -1324,8 +1355,15 @@ function update(dt) {
     b.g.userData.wr.rotation.y = -flap;
   }
 
-  // Kamp ateşi: alev, titreyen ışık, yükselen kıvılcımlar
+  // Kamp ateşi: gece otomatik yanar/sabah söner; elle yak/söndür override eder
+  const autoFire = nightAmount > 0.45;
+  if (fireOverride !== null && fireOverride === autoFire) fireOverride = null;  // doğa yetişince otomatiğe dön
+  fireOn = fireOverride === null ? autoFire : fireOverride;
+  if (fireBtnEl) fireBtnEl.textContent = fireOn ? '🔥 Söndür' : '🪵 Yak';
   for (const f of fireParts) {
+    for (const fm of f.flameMeshes) fm.visible = fireOn;
+    f.embersPoints.visible = fireOn;
+    if (!fireOn) { f.light.intensity = 0; continue; }
     for (const m of f.flames) m.uniforms.time.value += dt;
     f.light.intensity = 5 + Math.sin(elapsed * 17) * 1.2 + Math.sin(elapsed * 31) * 0.6;
     const p = f.embers.attributes.position;

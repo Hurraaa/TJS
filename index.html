@@ -39,6 +39,13 @@
       box-shadow: 0 4px 14px rgba(0,0,0,.16); pointer-events: auto;
     }
     #sitPrompt.show { display: flex; }
+    /* Ateş yak/söndür düğmesi */
+    #fireBtn {
+      position: fixed; left: 16px; top: 46px; z-index: 8; cursor: pointer; user-select: none;
+      padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 700; color: #8a3b10;
+      background: rgba(255,255,255,.7); backdrop-filter: blur(6px);
+      box-shadow: 0 3px 10px rgba(0,0,0,.12); pointer-events: auto;
+    }
 
     #hud {
       position: fixed; left: 16px; bottom: 16px;
@@ -119,11 +126,12 @@
 <body>
   <div id="app"></div>
 
-  <div id="status">v24 · karakter modeli yükleniyor…</div>
+  <div id="status">v25 · karakter modeli yükleniyor…</div>
   <div id="paper"></div>
   <div id="vignette"></div>
   <div id="warm"></div>
   <div id="sitPrompt">🔥 Otur</div>
+  <div id="fireBtn">🪵 Yak</div>
 
   <div id="tod-bar">
     <span>🌙</span>
