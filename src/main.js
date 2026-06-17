@@ -592,7 +592,8 @@ function makeCampfire(fx, fz) {
   colliders.push({ x: fx, z: fz, r: 1.5 });
   fireParts.push({ flames: [flameOuter.material, flameInner.material], light, embers: emGeo });
 }
-makeCampfire(12, 10);
+const CAMPFIRE = { x: 12, z: 10 };
+makeCampfire(CAMPFIRE.x, CAMPFIRE.z);
 
 // ---- Ateş böcekleri (gece) --------------------------------------------
 let firefliesMat = null;
@@ -630,6 +631,21 @@ let firefliesMat = null;
       }`,
   });
   scene.add(new THREE.Points(geo, firefliesMat));
+}
+
+// Ev konumları + "temiz bölge" (ağaç/kaya/çiçek ev/ateş/göl üstüne gelmesin)
+const houseSpots = [
+  [14, -22], [22, 8], [-20, -16], [-30, 18], [10, 30],
+  [26, -10], [-14, 26], [34, 20], [-34, -6], [18, 44],
+];
+function nearBuilt(x, z, pad) {
+  for (let i = 0; i < houseSpots.length; i++) {
+    const dx = x - houseSpots[i][0], dz = z - houseSpots[i][1];
+    if (dx * dx + dz * dz < (6 + pad) * (6 + pad)) return true;
+  }
+  if ((x - CAMPFIRE.x) ** 2 + (z - CAMPFIRE.z) ** 2 < (4 + pad) ** 2) return true;
+  if ((x - LAKE.x) ** 2 + (z - LAKE.z) ** 2 < (LAKE.r + 3 + pad) ** 2) return true;
+  return false;
 }
 
 // ---- Ağaçlar (low-poly, Ghibli) ---------------------------------------
@@ -680,7 +696,7 @@ const trees = new THREE.Group();
 for (let i = 0; i < 110; i++) {
   const x = (Math.random() - 0.5) * (WORLD - 24);
   const z = (Math.random() - 0.5) * (WORLD - 24);
-  if (Math.abs(x) < 7) continue;
+  if (Math.abs(x) < 7 || nearBuilt(x, z, 3)) continue;
   const t = Math.random() < 0.42 ? makePine() : makeRoundTree();
   t.position.set(x, heightAt(x, z), z);
   const ts = 0.7 + Math.random() * 0.8;
@@ -692,7 +708,7 @@ for (let i = 0; i < 110; i++) {
 for (let i = 0; i < 40; i++) {                 // çalılar
   const x = (Math.random() - 0.5) * (WORLD - 18);
   const z = (Math.random() - 0.5) * (WORLD - 18);
-  if (Math.abs(x) < 5) continue;
+  if (Math.abs(x) < 5 || nearBuilt(x, z, 1)) continue;
   const b = makeBush();
   b.position.set(x, heightAt(x, z), z);
   b.scale.setScalar(0.7 + Math.random() * 0.7);
@@ -704,6 +720,7 @@ scene.add(trees);
 for (let i = 0; i < 40; i++) {
   const x = (Math.random() - 0.5) * (WORLD - 20);
   const z = (Math.random() - 0.5) * (WORLD - 20);
+  if (nearBuilt(x, z, 2)) continue;
   const rr = 0.6 + Math.random() * 1.4;
   const rock = new THREE.Mesh(roughen(new THREE.DodecahedronGeometry(rr, 0), rr * 0.22), toon('#9aa0a6'));
   rock.position.set(x, heightAt(x, z) + 0.2, z);
@@ -759,16 +776,19 @@ function makeHouse(bodyColor, roofColor, opts = {}) {
 }
 const housesProc = new THREE.Group();
 const houseColors = [['#f0e3c8', '#c0584f'], ['#e8d6b8', '#5a7d8c'], ['#efe1cf', '#7a9b6a'], ['#f3ddc0', '#b06a3c']];
-const houseSpots = [
-  [14, -22], [22, 8], [-20, -16], [-30, 18], [10, 30],
-  [26, -10], [-14, 26], [34, 20], [-34, -6], [18, 44],
-];
 houseSpots.forEach((spot, i) => {
   const [x, z] = spot;
   const [bc, rc] = houseColors[i % houseColors.length];
   const W = 5 + Math.random() * 2.5, D = 4.5 + Math.random() * 2;
   const h = makeHouse(bc, rc, { W, H: 3.5 + Math.random() * 1.5, D });
-  h.position.set(x, heightAt(x, z), z);
+  // Tabanı ayak izinin en alçak köşesine oturt → hiçbir taraf havada kalmaz
+  const R = Math.max(W, D) * 0.6;
+  let gy = heightAt(x, z);
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 8) * Math.PI * 2;
+    gy = Math.min(gy, heightAt(x + Math.cos(a) * R, z + Math.sin(a) * R));
+  }
+  h.position.set(x, gy - 0.15, z);
   h.rotation.y = Math.random() * Math.PI;
   housesProc.add(h);
   colliders.push({ x, z, r: Math.max(W, D) * 0.55 });
@@ -901,7 +921,7 @@ function emote(name) {
   current = a;
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v22 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v23 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -957,6 +977,7 @@ const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v
     actions.yes = mk(pick('yes'));
     actions.no = mk(pick('no'));
     actions.thumbsup = mk(pick('thumbsup', 'thumbs up'));
+    actions.sit = mk(pick('sitting', 'sit'));
     current = actions.idle;
     if (current) current.play();
 
@@ -1110,6 +1131,20 @@ let vy = 0, grounded = true, walkPhase = 0, facing = Math.PI;
 let elapsed = 0;
 const clock = new THREE.Clock();
 
+// Kamp ateşinde oturma / ısınma
+let sitting = false, nearFire = false;
+const warmEl = document.getElementById('warm');
+const sitPromptEl = document.getElementById('sitPrompt');
+function toggleSit() {
+  if (sitting) sitting = false;
+  else if (nearFire) sitting = true;
+}
+addEventListener('keydown', (e) => { if (!e.repeat && e.code === 'KeyE') toggleSit(); });
+if (sitPromptEl) {
+  sitPromptEl.addEventListener('click', toggleSit);
+  sitPromptEl.addEventListener('touchstart', (e) => { toggleSit(); e.preventDefault(); }, { passive: false });
+}
+
 function update(dt) {
   const run = keys['ShiftLeft'] || keys['ShiftRight'] || touchRun;
   const speed = run ? 11 : 6;
@@ -1126,6 +1161,12 @@ function update(dt) {
   // joystick (analog)
   if (touch.x || touch.y) {
     move.addScaledVector(forward, touch.y).addScaledVector(right, touch.x);
+  }
+
+  // Otururken hareket girişi gelirse ayağa kalk; otururken hareketi kilitle
+  if (sitting) {
+    if (move.lengthSq() > 0.0004 || touchJump || keys['Space']) sitting = false;
+    else { move.set(0, 0, 0); facing = Math.atan2(CAMPFIRE.x - player.position.x, CAMPFIRE.z - player.position.z); }
   }
 
   const moving = move.lengthSq() > 0.0004;
@@ -1172,12 +1213,28 @@ function update(dt) {
   d = Math.atan2(Math.sin(d), Math.cos(d));
   player.rotation.y += d * Math.min(1, dt * 12);
 
+  // Kamp ateşine yakınlık + oturma istemi + ısınma vinyeti
+  const fdist = Math.hypot(player.position.x - CAMPFIRE.x, player.position.z - CAMPFIRE.z);
+  nearFire = fdist < 3.4;
+  if (sitPromptEl) {
+    if (sitting) { sitPromptEl.textContent = '🔥 Kalk'; sitPromptEl.classList.add('show'); }
+    else if (nearFire) { sitPromptEl.textContent = '🔥 Otur'; sitPromptEl.classList.add('show'); }
+    else sitPromptEl.classList.remove('show');
+  }
+  if (warmEl) {
+    const warmth = sitting ? 1 : THREE.MathUtils.clamp(1 - (fdist - 2) / 4, 0, 0.6);
+    warmEl.style.opacity = warmth.toFixed(2);
+  }
+
   const speed2d = Math.hypot(vel.x, vel.z);
   if (mixer) {
-    // Gerçek model: hıza/duruma göre klip seç
-    const want = !grounded ? 'jump' : (speed2d > 7.5 ? 'run' : (speed2d > 0.4 ? 'walk' : 'idle'));
-    if (want !== 'idle') { emoting = null; oneShotActive = false; }  // hareket emote'u iptal eder
-    if (oneShotActive) {
+    // Gerçek model: hıza/duruma/oturmaya göre klip seç
+    const want = sitting ? 'sit'
+      : (!grounded ? 'jump' : (speed2d > 7.5 ? 'run' : (speed2d > 0.4 ? 'walk' : 'idle')));
+    if (want !== 'idle' && want !== 'sit') { emoting = null; oneShotActive = false; }
+    if (sitting) {
+      setAction('sit');
+    } else if (oneShotActive) {
       // el salla bitene kadar bekle (finished olayı kapatır)
     } else if (emoting) {
       setAction(emoting);
@@ -1205,11 +1262,12 @@ function update(dt) {
     camYaw += dy * Math.min(1, dt * 2.2);
   }
 
-  // kamera takip
+  // kamera takip (otururken biraz yaklaşır)
   camTarget.lerp(new THREE.Vector3(player.position.x, player.position.y + 2.2, player.position.z), 1 - Math.pow(0.0008, dt));
-  const cx = camTarget.x + Math.sin(camYaw) * Math.cos(camPitch) * camDist;
-  const cy = camTarget.y + Math.sin(camPitch) * camDist;
-  const cz = camTarget.z + Math.cos(camYaw) * Math.cos(camPitch) * camDist;
+  const effDist = sitting ? Math.min(camDist, 7) : camDist;
+  const cx = camTarget.x + Math.sin(camYaw) * Math.cos(camPitch) * effDist;
+  const cy = camTarget.y + Math.sin(camPitch) * effDist;
+  const cz = camTarget.z + Math.cos(camYaw) * Math.cos(camPitch) * effDist;
   camera.position.lerp(new THREE.Vector3(cx, cy, cz), 1 - Math.pow(0.001, dt));
   camera.lookAt(camTarget);
 
