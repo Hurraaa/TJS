@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { SkeletonUtils } from 'three/addons/utils/SkeletonUtils.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { Water } from 'three/addons/objects/Water.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -1086,6 +1087,7 @@ scene.add(player);
 // ---- Gerçek karakter modeli (glTF, hazır animasyonlu) -----------------
 let mixer = null;
 const actions = {};
+const npcMixers = [];          // NPC animasyon mikserleri
 let current = null;
 let emoting = null;            // sürekli emote (dans), boştayken oynar
 let oneShotActive = false;     // tek seferlik emote (el salla) oynuyor mu
@@ -1113,7 +1115,7 @@ function emote(name) {
   current = a;
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v30 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v31 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1179,6 +1181,35 @@ const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v
     mixer.addEventListener('finished', (e) => {
       if (oneShots.includes(e.action)) oneShotActive = false;
     });
+
+    // ---- NPC'ler (aynı modelden klon, farklı animasyonlar) ----
+    const spawnNPC = (x, z, clip, faceX, faceZ) => {
+      const npc = SkeletonUtils.clone(model);     // ölçek + ayak hizası model'den gelir
+      const g = new THREE.Group(); g.add(npc);
+      g.position.set(x, heightAt(x, z), z);
+      g.rotation.y = (faceX !== undefined) ? Math.atan2(faceX - x, faceZ - z) : Math.random() * Math.PI * 2;
+      scene.add(g);
+      const mx = new THREE.AnimationMixer(npc);
+      const c = byName[clip];
+      if (c) {
+        const a = mx.clipAction(c);
+        if (clip === 'sitting') { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
+        else a.time = Math.random() * c.duration;   // senkron olmasın
+        a.play();
+      }
+      npcMixers.push(mx);
+      colliders.push({ x, z, r: 0.6 });
+    };
+    // ateş başında oturanlar
+    spawnNPC(CAMPFIRE.x + 1.7, CAMPFIRE.z + 1.4, 'sitting', CAMPFIRE.x, CAMPFIRE.z);
+    spawnNPC(CAMPFIRE.x - 1.8, CAMPFIRE.z - 0.9, 'sitting', CAMPFIRE.x, CAMPFIRE.z);
+    // manzarada oturan
+    spawnNPC(VISTA.x + 1.5, VISTA.z + 0.5, 'sitting', -95, 40);
+    // köyde selam veren / boşta / dans eden
+    spawnNPC(houseSpots[1][0] + 4, houseSpots[1][1] + 2, 'wave');
+    spawnNPC(houseSpots[3][0] - 3, houseSpots[3][1] + 3, 'idle');
+    spawnNPC(houseSpots[6][0] + 3, houseSpots[6][1] - 3, 'dance');
+    spawnNPC(6, -6, 'idle');
   };
 
   // Sırayla CDN'leri dene; hepsi başarısızsa basit gövdeye düş
@@ -1600,6 +1631,9 @@ function update(dt) {
   }
   if (rainbowMat) rainbowMat.opacity = (1 - nightAmount) * 0.22;
   if (petalsMat) { petalsMat.uniforms.time.value += dt; petalsMat.uniforms.day.value = 1 - nightAmount; }
+
+  // NPC animasyonları
+  for (let i = 0; i < npcMixers.length; i++) npcMixers[i].update(dt);
 
   clouds.rotation.y += dt * 0.005;
 }
