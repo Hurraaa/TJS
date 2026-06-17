@@ -399,7 +399,7 @@ function addMountain(mx, mz, h, baseR, color) {
   snow.position.y = h - h * 0.15; addOutline(snow, 0.2); g.add(snow);
   g.position.set(mx, heightAt(mx, mz) - 1, mz);
   scene.add(g);
-  colliders.push({ x: mx, z: mz, r: baseR * 0.78 });
+  colliders.push({ x: mx, z: mz, r: baseR * 0.92 });   // taban görseline yakın → içine girilmez
   return g;
 }
 addMountain(-104, 40, 66, 44, '#7c8a86');     // şelale dağı (ana)
@@ -1131,7 +1131,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v34 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v35 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1201,7 +1201,15 @@ const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v
     // ---- NPC'ler (aynı modelden klon, farklı animasyonlar) ----
     const spawnNPC = (x, z, clip, faceX, faceZ) => {
       const npc = SkeletonUtils.clone(model);     // ölçek + ayak hizası model'den gelir
+      // Her NPC'ye kendi rengi (malzemeleri klonla, tona kaydır) → birbirinin aynısı olmasın
+      const tint = new THREE.Color().setHSL(Math.random(), 0.5, 0.6);
+      npc.traverse((o) => {
+        if (!o.isMesh) return;
+        const recolor = (m) => { const cm = m.clone(); if (cm.color) cm.color.lerp(tint, 0.5); return cm; };
+        o.material = Array.isArray(o.material) ? o.material.map(recolor) : recolor(o.material);
+      });
       const g = new THREE.Group(); g.add(npc);
+      g.scale.setScalar(0.9 + Math.random() * 0.2);   // boy çeşitliliği
       g.position.set(x, heightAt(x, z), z);
       g.rotation.y = (faceX !== undefined) ? Math.atan2(faceX - x, faceZ - z) : Math.random() * Math.PI * 2;
       scene.add(g);
