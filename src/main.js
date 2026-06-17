@@ -1512,7 +1512,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v55 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v56 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1583,13 +1583,14 @@ const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v
     actions.yes = mk(pick('yes'));
     actions.no = mk(pick('no'));
     actions.thumbsup = mk(pick('thumbsup', 'thumbs up'));
+    actions.punch = mk(pick('punch'));        // taş atış kolu
     actions.sit = mk(pick('sitting', 'sit'));
     if (actions.sit) { actions.sit.setLoop(THREE.LoopOnce, 1); actions.sit.clampWhenFinished = true; }
     current = actions.idle;
     if (current) current.play();
 
     // Tek seferlik emote'lar bitince boşa dön
-    const oneShots = [actions.wave, actions.yes, actions.no, actions.thumbsup];
+    const oneShots = [actions.wave, actions.yes, actions.no, actions.thumbsup, actions.punch];
     mixer.addEventListener('finished', (e) => {
       if (oneShots.includes(e.action)) oneShotActive = false;
     });
@@ -1880,11 +1881,24 @@ function throwStone() {
   let dl = Math.hypot(dx, dz);
   if (dl < 1e-3) { dx = Math.sin(player.rotation.y); dz = Math.cos(player.rotation.y); dl = 1; }
   dx /= dl; dz /= dl;
-  const s = new THREE.Mesh(_stoneGeo, _stoneMat);
-  s.position.set(player.position.x + dx * 0.7, player.position.y + 1.4, player.position.z + dz * 0.7);
-  s.castShadow = true; scene.add(s);
-  const sp = 15;
-  stones.push({ mesh: s, vx: dx * sp, vy: 1.6, vz: dz * sp, skips: 4, spin: 6 + Math.random() * 6 });
+  // atış kolu hareketi (Punch klibi) + taşı atışın ortasında bırak
+  player.rotation.y = Math.atan2(dx, dz);            // attığın yöne dön
+  facing = player.rotation.y;
+  if (mixer && actions.punch) {
+    emoting = null; oneShotActive = true;
+    const a = actions.punch;
+    if (current && current !== a) current.fadeOut(0.1);
+    a.reset(); a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = false; a.fadeIn(0.1).play();
+    current = a;
+  }
+  const release = () => {
+    const s = new THREE.Mesh(_stoneGeo, _stoneMat);
+    s.position.set(player.position.x + dx * 0.7, player.position.y + 1.5, player.position.z + dz * 0.7);
+    s.castShadow = true; scene.add(s);
+    const sp = 15;
+    stones.push({ mesh: s, vx: dx * sp, vy: 1.7, vz: dz * sp, skips: 4, spin: 6 + Math.random() * 6 });
+  };
+  if (mixer && actions.punch) setTimeout(release, 260); else release();
 }
 addEventListener('keydown', (e) => { if (!e.repeat && e.code === 'KeyQ') throwStone(); });
 const stoneBtnEl = document.getElementById('stoneBtn');
