@@ -925,7 +925,7 @@ function emote(name) {
   current = a;
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v25 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v26 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1237,6 +1237,7 @@ function update(dt) {
     else if (nearFire) { sitPromptEl.textContent = '🔥 Otur'; sitPromptEl.classList.add('show'); }
     else sitPromptEl.classList.remove('show');
   }
+  if (fireBtnEl) fireBtnEl.classList.toggle('show', nearFire);   // sadece yakınken
   if (warmEl) {
     const warmth = (fireOn ? 1 : 0) * (sitting ? 1 : THREE.MathUtils.clamp(1 - (fdist - 2) / 4, 0, 0.6));
     warmEl.style.opacity = warmth.toFixed(2);

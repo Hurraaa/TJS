@@ -39,13 +39,15 @@
       box-shadow: 0 4px 14px rgba(0,0,0,.16); pointer-events: auto;
     }
     #sitPrompt.show { display: flex; }
-    /* Ateş yak/söndür düğmesi */
+    /* Ateş yak/söndür düğmesi — sadece ateşe yaklaşınca görünür */
     #fireBtn {
-      position: fixed; left: 16px; top: 46px; z-index: 8; cursor: pointer; user-select: none;
-      padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 700; color: #8a3b10;
-      background: rgba(255,255,255,.7); backdrop-filter: blur(6px);
-      box-shadow: 0 3px 10px rgba(0,0,0,.12); pointer-events: auto;
+      position: fixed; left: 50%; bottom: 166px; transform: translateX(-50%); z-index: 8;
+      display: none; cursor: pointer; user-select: none;
+      padding: 10px 20px; border-radius: 999px; font-weight: 700; color: #8a3b10;
+      background: rgba(255,255,255,.72); backdrop-filter: blur(6px);
+      box-shadow: 0 4px 14px rgba(0,0,0,.16); pointer-events: auto;
     }
+    #fireBtn.show { display: block; }
 
     #hud {
       position: fixed; left: 16px; bottom: 16px;
@@ -64,14 +66,43 @@
     }
     #status.ok { background: rgba(180,235,190,.85); }
     #status.err { background: rgba(245,190,180,.9); }
-    /* Günün saati kaydırıcısı */
+    /* Günün saati kaydırıcısı — premium cam bar */
     #tod-bar {
-      position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 8;
-      display: flex; align-items: center; gap: 8px;
-      background: rgba(255,255,255,.55); backdrop-filter: blur(6px);
-      padding: 6px 12px; border-radius: 999px; box-shadow: 0 4px 14px rgba(0,0,0,.12);
+      position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 8;
+      display: flex; align-items: center; gap: 11px;
+      padding: 9px 16px; border-radius: 999px;
+      background: linear-gradient(180deg, rgba(28,33,54,.55), rgba(14,18,34,.55));
+      border: 1px solid rgba(255,255,255,.18);
+      box-shadow: 0 10px 30px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.18);
+      backdrop-filter: blur(12px) saturate(1.2);
     }
-    #tod-bar input[type=range] { width: 150px; accent-color: #e89b4c; }
+    #tod-bar .ic { font-size: 17px; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0,0,0,.5)); }
+    #tod {
+      -webkit-appearance: none; appearance: none; width: 178px; height: 9px; border-radius: 999px; outline: none;
+      background: linear-gradient(90deg,
+        #0a0f24 0%, #1b2a55 16%, #6a3b7a 28%, #e0743a 37%, #ffd27a 47%,
+        #cfeef0 60%, #8fd4ea 80%, #6cc0e6 100%);
+      box-shadow: inset 0 1px 3px rgba(0,0,0,.5);
+    }
+    #tod::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%; cursor: pointer;
+      background: radial-gradient(circle at 35% 30%, #ffffff, #ffe6a8 45%, #f0a83a 100%);
+      border: 2px solid rgba(255,255,255,.92);
+      box-shadow: 0 0 12px rgba(255,205,120,.95), 0 2px 6px rgba(0,0,0,.45);
+    }
+    #tod::-moz-range-thumb {
+      width: 20px; height: 20px; border-radius: 50%; cursor: pointer;
+      background: radial-gradient(circle at 35% 30%, #ffffff, #ffe6a8 45%, #f0a83a 100%);
+      border: 2px solid rgba(255,255,255,.92);
+      box-shadow: 0 0 12px rgba(255,205,120,.95), 0 2px 6px rgba(0,0,0,.45);
+    }
+    #tod::-moz-range-track { background: transparent; }
+    #todIcon {
+      min-width: 30px; text-align: center; font-size: 15px;
+      padding: 4px 8px; border-radius: 999px;
+      background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.18);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.15);
+    }
     #hud kbd {
       background: #fff; border: 1px solid #cfd9dd; border-bottom-width: 2px;
       border-radius: 6px; padding: 1px 6px; font-size: 12px; font-weight: 600;
@@ -126,7 +157,7 @@
 <body>
   <div id="app"></div>
 
-  <div id="status">v25 · karakter modeli yükleniyor…</div>
+  <div id="status">v26 · karakter modeli yükleniyor…</div>
   <div id="paper"></div>
   <div id="vignette"></div>
   <div id="warm"></div>
@@ -134,10 +165,10 @@
   <div id="fireBtn">🪵 Yak</div>
 
   <div id="tod-bar">
-    <span>🌙</span>
+    <span class="ic">🌙</span>
     <input id="tod" type="range" min="0" max="1" step="0.01" value="0.62" />
-    <span>☀️</span>
-    <span id="todIcon" style="min-width:22px;text-align:center;">☀️</span>
+    <span class="ic">☀️</span>
+    <span id="todIcon">☀️</span>
   </div>
 
   <div id="hud">
