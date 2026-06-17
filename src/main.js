@@ -127,6 +127,7 @@ const WORLD = 260;
 const colliders = [];                          // {x, z, r} — katı engeller (çarpışma)
 const glowMats = [];                           // gece parlayan malzemeler {mat, base, phase}
 const lilies = [];                             // göl nilüferleri (hafif salınır)
+const dragonflies = [];                        // su üstünde uçan yusufçuklar
 function heightAt(x, z) {
   return Math.sin(x * 0.045) * 2.4 + Math.cos(z * 0.05) * 2.2
        + Math.sin((x + z) * 0.018) * 3.0
@@ -232,6 +233,64 @@ let water = null;
     g.position.set(x, wy, z);
     scene.add(g);
     lilies.push({ g, phase: Math.random() * 6.28, baseY: wy });
+  }
+
+  // Birkaç nilüferin üstüne kurbağa
+  const frogColors = ['#5fae3f', '#4f9a3a'];
+  for (let i = 0; i < 3 && lilies.length; i++) {
+    const L = lilies[(Math.random() * lilies.length) | 0];
+    const f = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8), toon(frogColors[i % 2]));
+    body.scale.set(1, 0.7, 1.2); f.add(body);
+    for (const sx of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), toon('#26331a'));
+      eye.position.set(sx * 0.09, 0.14, 0.08); f.add(eye);
+    }
+    f.position.set(0, 0.12, 0); L.g.add(f);
+  }
+}
+
+// Sazlık (göl kıyısı)
+{
+  const reedA = toon('#5fa05a'), reedB = toon('#7bb86a'), catMat = toon('#7a5236');
+  for (let i = 0; i < 46; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const rr = LAKE.r - 0.5 + (Math.random() - 0.5) * 2.5;
+    const x = LAKE.x + Math.cos(a) * rr, z = LAKE.z + Math.sin(a) * rr;
+    if (Math.hypot(x - (LAKE.x - LAKE.r + 6), z - LAKE.z) < 9) continue;  // şelale dibi boş
+    const g = new THREE.Group(); g.position.set(x, heightAt(x, z), z); scene.add(g);
+    const n = 3 + (Math.random() * 4 | 0);
+    for (let b = 0; b < n; b++) {
+      const hh = 1.1 + Math.random() * 1.5;
+      const blade = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.05, hh, 4), Math.random() < 0.5 ? reedA : reedB);
+      blade.position.set((Math.random() - 0.5) * 0.5, hh / 2, (Math.random() - 0.5) * 0.5);
+      blade.rotation.z = (Math.random() - 0.5) * 0.4; blade.castShadow = true; g.add(blade);
+      if (Math.random() < 0.28) {                    // kediotu (cattail) başı
+        const cat = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.28, 4, 6), catMat);
+        cat.position.set(blade.position.x, hh - 0.05, blade.position.z); cat.rotation.z = blade.rotation.z; g.add(cat);
+      }
+    }
+  }
+}
+
+// Yusufçuklar (su üstünde uçar)
+{
+  const wingMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false });
+  for (let i = 0; i < 6; i++) {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.03, 0.42, 4, 6), toon('#2f7f9f'));
+    body.rotation.x = Math.PI / 2; g.add(body);
+    const wings = [];
+    for (const sx of [-1, 1]) for (const fz of [0.1, -0.1]) {
+      const w = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.12), wingMat);
+      w.position.set(sx * 0.18, 0.03, fz); g.add(w); wings.push(w);
+    }
+    g.userData = { wings };
+    scene.add(g);
+    dragonflies.push({
+      g, wings, cx: LAKE.x + (Math.random() - 0.5) * LAKE.r, cz: LAKE.z + (Math.random() - 0.5) * LAKE.r,
+      r: 3 + Math.random() * 8, h: 0.7 + Math.random() * 1.3, speed: 1.1 + Math.random() * 0.8, phase: Math.random() * 6.28,
+    });
   }
 }
 
@@ -1544,7 +1603,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v57 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v58 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -2185,6 +2244,17 @@ function update(dt) {
     const L = lilies[i];
     L.g.position.y = L.baseY + Math.sin(elapsed * 1.2 + L.phase) * 0.04;
     L.g.rotation.z = Math.sin(elapsed * 0.6 + L.phase) * 0.05;
+  }
+  // Yusufçuklar: su üstünde darting + hızlı kanat çırpma
+  for (let i = 0; i < dragonflies.length; i++) {
+    const d = dragonflies[i];
+    const t = elapsed * d.speed + d.phase;
+    const x = d.cx + Math.cos(t) * d.r + Math.sin(t * 2.3) * 1.4;
+    const z = d.cz + Math.sin(t * 1.3) * d.r;
+    d.g.position.set(x, LAKE_Y + d.h + Math.sin(t * 3) * 0.25, z);
+    d.g.rotation.y = Math.atan2(-Math.sin(t) * d.r, Math.cos(t * 1.3) * d.r * 1.3);
+    const fl = Math.sin(elapsed * 40 + d.phase) * 0.5;
+    for (let w = 0; w < d.wings.length; w++) d.wings[w].rotation.x = fl;
   }
 
   // Şelale
