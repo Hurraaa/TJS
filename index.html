@@ -48,6 +48,14 @@
       box-shadow: 0 4px 14px rgba(0,0,0,.16); pointer-events: auto;
     }
     #fireBtn.show { display: block; }
+    /* Gol mesajı */
+    #goalMsg {
+      position: fixed; top: 36%; left: 50%; transform: translate(-50%, -50%) scale(0.6); z-index: 9;
+      font-family: ui-rounded, system-ui, sans-serif; font-weight: 900; font-size: 56px; color: #fff;
+      text-shadow: 0 4px 18px rgba(0,0,0,.5), 0 0 24px rgba(255,210,90,.85);
+      opacity: 0; pointer-events: none; transition: opacity .25s ease, transform .25s ease;
+    }
+    #goalMsg.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 
     #hud {
       position: fixed; left: 16px; bottom: 16px;
@@ -157,12 +165,13 @@
 <body>
   <div id="app"></div>
 
-  <div id="status">v40 · karakter modeli yükleniyor…</div>
+  <div id="status">v41 · karakter modeli yükleniyor…</div>
   <div id="paper"></div>
   <div id="vignette"></div>
   <div id="warm"></div>
   <div id="sitPrompt">🔥 Otur</div>
   <div id="fireBtn">🪵 Yak</div>
+  <div id="goalMsg">⚽ GOL!</div>
 
   <div id="tod-bar">
     <span class="ic">🌙</span>

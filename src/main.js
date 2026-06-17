@@ -876,13 +876,49 @@ let swing = null;
   }
   const seat = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.1, 0.5), toon('#9a6a3e'));
   seat.position.set(0, -ropeLen, 0); seat.castShadow = true; addOutline(seat, 0.03); pivot.add(seat);
-  swing = { pivot, x: SWING.x, z: SWING.z, gy, barH, ropeLen };
+  swing = { pivot, x: SWING.x, z: SWING.z, gy, barH, ropeLen, rider: null, timer: 6, rideLeft: 0 };
   // oyuncu salıncağa binebilsin (özel oturma noktası)
   SITSPOTS.push({
     x: SWING.x, z: SWING.z, type: 'swing', snap: true, range: 2.6, lift: 0,
     face: { x: SWING.x, z: SWING.z + 12 }, look: new THREE.Vector3(SWING.x, gy + 1.4, SWING.z), back: 6,
   });
 }
+
+// ---- Futbol sahası (basit gol) ----------------------------------------
+const FIELD = { x: 5, z: -46, halfLen: 12, w: 5, h: 2.4 };
+const goals = [];
+let score = 0, goalCd = 0;
+const goalMsgEl = document.getElementById('goalMsg');
+function makeGoal(gx, gz, outDir) {
+  const g = new THREE.Group();
+  g.position.set(gx, heightAt(gx, gz), gz); scene.add(g);
+  const postMat = new THREE.MeshToonMaterial({ color: '#ffffff', gradientMap: ramp });
+  const w = FIELD.w, h = FIELD.h;
+  for (const sx of [-w / 2, w / 2]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, h, 8), postMat);
+    post.position.set(sx, h / 2, 0); post.castShadow = true; addOutline(post, 0.03); g.add(post);
+    colliders.push({ x: gx + sx, z: gz, r: 0.25 });
+  }
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, w + 0.2, 8), postMat);
+  bar.rotation.z = Math.PI / 2; bar.position.set(0, h, 0); addOutline(bar, 0.03); g.add(bar);
+  const depth = 1.5;
+  const net = new THREE.Mesh(new THREE.BoxGeometry(w, h, depth, 8, 5, 3),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.35 }));
+  net.position.set(0, h / 2, outDir * depth / 2); g.add(net);
+  goals.push({ x: gx, z: gz, w, h });
+}
+makeGoal(FIELD.x, FIELD.z - FIELD.halfLen, -1);
+makeGoal(FIELD.x, FIELD.z + FIELD.halfLen, +1);
+// saha çizgileri
+{
+  const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3, depthWrite: false });
+  const circle = new THREE.Mesh(new THREE.RingGeometry(2.3, 2.6, 40), lineMat);
+  circle.rotation.x = -Math.PI / 2; circle.position.set(FIELD.x, heightAt(FIELD.x, FIELD.z) + 0.07, FIELD.z); scene.add(circle);
+  const mid = new THREE.Mesh(new THREE.PlaneGeometry(FIELD.w * 1.8, 0.16), lineMat);
+  mid.rotation.x = -Math.PI / 2; mid.position.set(FIELD.x, heightAt(FIELD.x, FIELD.z) + 0.07, FIELD.z); scene.add(mid);
+}
+// topu sahanın ortasına al
+if (ball) ball.position.set(FIELD.x, heightAt(FIELD.x, FIELD.z) + 0.5, FIELD.z);
 
 // ---- Ateş böcekleri (gece) --------------------------------------------
 let firefliesMat = null;
@@ -934,6 +970,8 @@ function nearBuilt(x, z, pad) {
   }
   if ((x - CAMPFIRE.x) ** 2 + (z - CAMPFIRE.z) ** 2 < (4 + pad) ** 2) return true;
   if ((x - LAKE.x) ** 2 + (z - LAKE.z) ** 2 < (LAKE.r + 3 + pad) ** 2) return true;
+  if ((x - SWING.x) ** 2 + (z - SWING.z) ** 2 < (10 + pad) ** 2) return true;       // oyun alanı
+  if ((x - FIELD.x) ** 2 + (z - FIELD.z) ** 2 < (FIELD.halfLen + 7 + pad) ** 2) return true; // saha
   return false;
 }
 
@@ -1239,6 +1277,14 @@ const actions = {};
 const npcMixers = [];          // NPC animasyon mikserleri
 const npcs = [];               // {x, z, greet} — selama karşılık verenler
 const kids = [];               // koşup zıplayan çocuklar
+function setKidAnim(k, name) {
+  if (k.anim === name) return;
+  const from = k.anim === 'run' ? k.runA : k.idleA;
+  const to = name === 'run' ? k.runA : k.idleA;
+  if (from) from.fadeOut(0.2);
+  if (to) to.reset().fadeIn(0.2).play();
+  k.anim = name;
+}
 let current = null;
 let emoting = null;            // sürekli emote (dans), boştayken oynar
 let oneShotActive = false;     // tek seferlik emote (el salla) oynuyor mu
@@ -1275,7 +1321,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v40 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v41 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1418,8 +1464,9 @@ const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v
       scene.add(g);
       const mx = new THREE.AnimationMixer(k);
       const runA = byName['running'] ? mx.clipAction(byName['running']) : null;
+      const idleA = byName['idle'] ? mx.clipAction(byName['idle']) : null;
       if (runA) { runA.time = Math.random() * runA.getClip().duration; runA.play(); }
-      kids.push({ g, mx, tx: x, tz: z, vy: 0, grounded: true, jumpCd: Math.random() * 3, retarget: 0 });
+      kids.push({ g, mx, runA, idleA, anim: 'run', tx: x, tz: z, vy: 0, grounded: true, jumpCd: Math.random() * 3, retarget: 0, mode: 'play' });
     };
     for (let i = 0; i < 6; i++) {
       let kx, kz, tries = 0;
@@ -1676,18 +1723,34 @@ function update(dt) {
   if (player.position.y <= groundY) { player.position.y = groundY; vy = 0; grounded = true; }
   if (sitting && sitSpot && sitSpot.lift) player.position.y = groundY + sitSpot.lift;  // kütüğün üstünde
 
-  // Salıncak: binince oyuncuyu koltukla salla; boştayken hafif sallan
+  // Salıncak: oyuncu ya da bir çocuk binebilir; boştayken hafif sallanır
   if (swing) {
-    const riding = sitting && sitSpot && sitSpot.type === 'swing';
-    const ang = riding ? 0.6 * Math.sin(elapsed * 1.9) : 0.12 * Math.sin(elapsed * 1.0);
+    const playerRiding = sitting && sitSpot && sitSpot.type === 'swing';
+    if (playerRiding) {
+      if (swing.rider) { swing.rider.mode = 'play'; swing.rider = null; }   // oyuncu önceliklidir
+    } else {
+      swing.timer -= dt;
+      if (!swing.rider && swing.timer <= 0 && kids.length) {
+        const k = kids[(Math.random() * kids.length) | 0];
+        if (k.mode === 'play') { swing.rider = k; k.mode = 'toSwing'; swing.rideLeft = 6 + Math.random() * 6; }
+        swing.timer = 14 + Math.random() * 10;
+      }
+      if (swing.rider && swing.rider.mode === 'swinging') {
+        swing.rideLeft -= dt;
+        if (swing.rideLeft <= 0) { swing.rider.mode = 'play'; swing.rider = null; }
+      }
+    }
+    const occ = playerRiding ? 'player' : (swing.rider && swing.rider.mode === 'swinging' ? swing.rider : null);
+    const ang = occ ? 0.6 * Math.sin(elapsed * 1.9) : 0.12 * Math.sin(elapsed * 1.0);
     swing.pivot.rotation.x = ang;
-    if (riding) {
-      const yOff = swing.barH - swing.ropeLen * Math.cos(ang);
-      const zOff = swing.ropeLen * Math.sin(ang);
+    const yOff = swing.barH - swing.ropeLen * Math.cos(ang);
+    const zOff = swing.ropeLen * Math.sin(ang);
+    if (occ === 'player') {
       player.position.set(swing.x, swing.gy + yOff + 0.05, swing.z + zOff);
-      player.rotation.x = ang * 0.5;            // gövde sallanmayla eğilsin
+      player.rotation.x = ang * 0.5;
     } else {
       player.rotation.x = 0;
+      if (occ) { occ.g.position.set(swing.x, swing.gy + yOff + 0.05, swing.z + zOff); occ.g.rotation.set(ang * 0.5, 0, 0); }
     }
   }
 
@@ -1889,19 +1952,28 @@ function update(dt) {
   const klim = WORLD / 2 - 8;
   for (let i = 0; i < kids.length; i++) {
     const k = kids[i];
-    k.retarget -= dt;
-    if (k.retarget <= 0) {
-      const r = Math.random();
-      if (ball && r < 0.5) {                          // topu kovala
-        k.tx = ball.position.x; k.tz = ball.position.z;
-      } else if (kids.length > 1 && r < 0.85) {       // başka çocuğu kovala
-        const o = kids[(Math.random() * kids.length) | 0];
-        k.tx = o.g.position.x; k.tz = o.g.position.z;
-      } else {                                        // tüm haritada gez
-        k.tx = (Math.random() - 0.5) * 2 * klim;
-        k.tz = (Math.random() - 0.5) * 2 * klim;
+    // Salıncakta: hareket etme, sadece sallan (konum salıncak bloğunda ayarlanır)
+    if (k.mode === 'swinging') { setKidAnim(k, 'idle'); k.mx.update(dt); continue; }
+
+    k.g.rotation.x = 0;                              // salıncaktan kalkınca eğimi sıfırla
+    setKidAnim(k, 'run');
+    if (k.mode === 'toSwing') {                       // salıncağa yürü
+      k.tx = SWING.x; k.tz = SWING.z;
+    } else {
+      k.retarget -= dt;
+      if (k.retarget <= 0) {
+        const r = Math.random();
+        if (ball && r < 0.5) {                        // topu kovala
+          k.tx = ball.position.x; k.tz = ball.position.z;
+        } else if (kids.length > 1 && r < 0.85) {     // başka çocuğu kovala
+          const o = kids[(Math.random() * kids.length) | 0];
+          k.tx = o.g.position.x; k.tz = o.g.position.z;
+        } else {                                      // tüm haritada gez
+          k.tx = (Math.random() - 0.5) * 2 * klim;
+          k.tz = (Math.random() - 0.5) * 2 * klim;
+        }
+        k.retarget = 1.6 + Math.random() * 2.6;
       }
-      k.retarget = 1.6 + Math.random() * 2.6;
     }
     let dx = k.tx - k.g.position.x, dz = k.tz - k.g.position.z;
     const dist = Math.hypot(dx, dz) || 1;
@@ -1910,7 +1982,8 @@ function update(dt) {
       k.g.position.x = THREE.MathUtils.clamp(k.g.position.x + dx * 6.5 * dt, -klim, klim);
       k.g.position.z = THREE.MathUtils.clamp(k.g.position.z + dz * 6.5 * dt, -klim, klim);
       k.g.rotation.y = Math.atan2(dx, dz);
-    } else { k.retarget = 0; }
+    } else if (k.mode === 'toSwing') { k.mode = 'swinging'; }   // salıncağa vardı
+    else { k.retarget = 0; }
     // zıplama
     k.jumpCd -= dt;
     if (k.grounded && k.jumpCd <= 0) { k.vy = 7; k.grounded = false; k.jumpCd = 1.5 + Math.random() * 3; }
@@ -1956,6 +2029,27 @@ function update(dt) {
     if (ny <= bgy) { ny = bgy; s.vy = -s.vy * 0.6; if (Math.abs(s.vy) < 1.5) s.vy = 0; s.vx *= 0.6; s.vz *= 0.6; }
     ball.position.y = ny;
     ball.rotation.x += s.vz * dt * 0.9; ball.rotation.z -= s.vx * dt * 0.9;
+
+    // Gol kontrolü
+    goalCd -= dt;
+    if (goalCd <= 0) {
+      for (const gl of goals) {
+        if (Math.abs(ball.position.x - gl.x) < gl.w / 2 &&
+            Math.abs(ball.position.z - gl.z) < 1.1 &&
+            (ball.position.y - 0.5) < gl.h) {
+          score++;
+          if (goalMsgEl) {
+            goalMsgEl.textContent = '⚽ GOL!  ' + score;
+            goalMsgEl.classList.add('show');
+            setTimeout(() => goalMsgEl.classList.remove('show'), 1400);
+          }
+          ball.position.set(FIELD.x, heightAt(FIELD.x, FIELD.z) + 0.5, FIELD.z);
+          s.vx = 0; s.vz = 0; s.vy = 2; s.kickCd = 2;
+          goalCd = 2;
+          break;
+        }
+      }
+    }
   }
 
   // Uçurtma (gökyüzünde süzülür, ipi yere bağlı)
