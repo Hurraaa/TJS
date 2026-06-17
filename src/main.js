@@ -876,8 +876,8 @@ const _fbx = CAMPFIRE.x + Math.cos(_fa) * 2.5, _fbz = CAMPFIRE.z + Math.sin(_fa)
 const SITSPOTS = [
   { x: _fbx, z: _fbz, type: 'fire', snap: true, range: 3.6, lift: 0.5,
     face: { x: CAMPFIRE.x, z: CAMPFIRE.z }, look: new THREE.Vector3(CAMPFIRE.x, _fy + 1.0, CAMPFIRE.z), back: 3.6 },
-  { x: VISTA.x, z: VISTA.z, type: 'vista', snap: true, range: 3.0, lift: 0,
-    face: { x: -95, z: 40 }, look: new THREE.Vector3(-95, 20, 40), back: 5.5 },
+  { x: VISTA.x - 1.1, z: VISTA.z - 0.7, type: 'vista', snap: true, range: 3.2, lift: 0.5,
+    face: { x: -95, z: VISTA.z }, look: new THREE.Vector3(-95, 20, 40), back: 5.5 },
 ];
 
 // ---- Oyuncaklar: top + uçurtma ----------------------------------------
@@ -1426,6 +1426,7 @@ scene.add(player);
 
 // ---- Gerçek karakter modeli (glTF, hazır animasyonlu) -----------------
 let mixer = null;
+let playerModel = null;          // oturunca hafif yaslamak için
 const actions = {};
 const npcMixers = [];          // NPC animasyon mikserleri
 const npcs = [];               // {x, z, greet} — selama karşılık verenler
@@ -1474,7 +1475,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v51 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v52 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1500,6 +1501,7 @@ const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v
     });
 
     player.add(model);
+    playerModel = model;
 
     // Boyutlandır: gerçek boyu ölç (matrisler güncel), hedef ~2.4 birim, ayaklar yerde.
     // Kök ölçeği EZME — çarp (model kendi iç ölçeğini koruyabilir).
@@ -1551,6 +1553,7 @@ const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v
         const recolor = (m) => { const cm = m.clone(); if (cm.color) cm.color.lerp(tint, 0.5); return cm; };
         o.material = Array.isArray(o.material) ? o.material.map(recolor) : recolor(o.material);
       });
+      if (clip === 'sitting') npc.rotation.x = -0.12;  // dik değil, hafif arkaya yaslı
       const g = new THREE.Group(); g.add(npc);
       g.scale.setScalar(0.9 + Math.random() * 0.2);   // boy çeşitliliği
       g.position.set(x, heightAt(x, z) + lift, z);
@@ -1594,8 +1597,8 @@ const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v
     const bz = (i) => CAMPFIRE.z + Math.sin(sa(i)) * 2.5;
     spawnNPC(bx(0), bz(0), 'sitting', CAMPFIRE.x, CAMPFIRE.z, 0.5);
     spawnNPC(bx(2), bz(2), 'sitting', CAMPFIRE.x, CAMPFIRE.z, 0.5);
-    // manzarada oturan
-    spawnNPC(VISTA.x + 1.5, VISTA.z + 0.5, 'sitting', -95, 40);
+    // manzarada kütüğün ÜSTÜNDE, manzaraya dönük oturan
+    spawnNPC(VISTA.x - 1.1, VISTA.z + 0.7, 'sitting', -95, VISTA.z, 0.5);
     // köyde selam veren / boşta / dans eden
     spawnNPC(houseSpots[1][0] + 4, houseSpots[1][1] + 2, 'wave');
     spawnNPC(houseSpots[3][0] - 3, houseSpots[3][1] + 3, 'idle');
@@ -1934,13 +1937,13 @@ function update(dt) {
     const ang = occ ? 0.6 * Math.sin(elapsed * 1.9) : 0.12 * Math.sin(elapsed * 1.0);
     swing.pivot.rotation.x = ang;
     const yOff = swing.barH - swing.ropeLen * Math.cos(ang);
-    const zOff = swing.ropeLen * Math.sin(ang);
+    const zOff = -swing.ropeLen * Math.sin(ang);     // koltukla aynı yöne git
     if (occ === 'player') {
       player.position.set(swing.x, swing.gy + yOff + 0.05, swing.z + zOff);
-      player.rotation.x = ang * 0.5;
+      player.rotation.x = ang;                        // gövde iple aynı açıda
     } else {
       player.rotation.x = 0;
-      if (occ) { occ.g.position.set(swing.x, swing.gy + yOff + 0.05, swing.z + zOff); occ.g.rotation.set(ang * 0.5, 0, 0); }
+      if (occ) { occ.g.position.set(swing.x, swing.gy + yOff + 0.05, swing.z + zOff); occ.g.rotation.set(ang, 0, 0); }
     }
   }
   if (seesaw) seesaw.rotation.z = 0.16 * Math.sin(elapsed * 1.3);   // tahterevalli sallanır
@@ -1952,6 +1955,10 @@ function update(dt) {
     player.position.lerpVectors(slide.topPos, slide.botPos, e);
     player.rotation.x = -slide.angle * 0.95;        // sırt yukarı, bacaklar ileri
     if (slide.t >= 1) { sitting = false; sitSpot = null; player.rotation.x = 0; }
+  }
+  // Ateş/manzara oturuşunda gövdeyi hafif arkaya yasla (dik durmasın)
+  if (playerModel) {
+    playerModel.rotation.x = (sitting && sitSpot && (sitSpot.type === 'fire' || sitSpot.type === 'vista')) ? -0.12 : 0;
   }
 
   // yönelme (yumuşak)
