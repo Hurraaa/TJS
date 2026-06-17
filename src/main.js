@@ -916,7 +916,7 @@ let kite = null, kiteLine = null; const kiteTail = []; const kiteAnchor = new TH
 
 // ---- Oyun alanı + salıncak --------------------------------------------
 const SWING = { x: 32, z: -34 };
-let swing = null, seesaw = null;
+let swing = null, seesaw = null, slide = null;
 {
   const gy = heightAt(SWING.x, SWING.z);
   // kumlu zemin
@@ -964,6 +964,39 @@ let swing = null, seesaw = null;
   }
   seesaw = pv;
   colliders.push({ x: sx, z: sz, r: 1.4 });
+
+  // Kaydırak (tepeden +z yönüne iner)
+  const klx = SWING.x - 7, klz = SWING.z + 1, klgy = heightAt(klx, klz);
+  const kg = new THREE.Group(); kg.position.set(klx, klgy, klz); scene.add(kg);
+  const H = 2.6, run = 4.2, angle = Math.atan2(H, run), chuteLen = Math.hypot(H, run);
+  const woodMat = toon('#c98a3a'), kframe = toon('#7a5236');
+  const plat = new THREE.Mesh(roughen(new THREE.BoxGeometry(1.3, 0.14, 1.2), 0.02), woodMat);
+  plat.position.set(0, H, -0.2); plat.castShadow = true; addOutline(plat, 0.03); kg.add(plat);
+  for (const px of [-0.5, 0.5]) {                  // merdiven direkleri (arka)
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, H + 0.4, 6), kframe);
+    post.position.set(px, H / 2, -0.8); post.castShadow = true; addOutline(post, 0.025); kg.add(post);
+  }
+  for (let r = 0; r < 5; r++) {                    // basamaklar
+    const rung = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.0, 6), kframe);
+    rung.rotation.z = Math.PI / 2; rung.position.set(0, 0.4 + r * 0.5, -0.8); kg.add(rung);
+  }
+  const chute = new THREE.Mesh(roughen(new THREE.BoxGeometry(1.1, 0.12, chuteLen), 0.01), woodMat);
+  chute.position.set(0, (H + 0.25) / 2, run / 2 + 0.3); chute.rotation.x = angle;
+  chute.castShadow = true; chute.receiveShadow = true; addOutline(chute, 0.03); kg.add(chute);
+  for (const px of [-0.62, 0.62]) {                // yan korkuluklar
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.34, chuteLen), kframe);
+    rail.position.set(px, (H + 0.25) / 2 + 0.2, run / 2 + 0.3); rail.rotation.x = angle; addOutline(rail, 0.025); kg.add(rail);
+  }
+  colliders.push({ x: klx, z: klz - 0.8, r: 0.6 });
+  slide = {
+    topPos: new THREE.Vector3(klx, klgy + H + 0.45, klz - 0.1),
+    botPos: new THREE.Vector3(klx, klgy + 0.5, klz + run + 0.7),
+    angle, t: 0,
+  };
+  SITSPOTS.push({
+    x: klx, z: klz - 1.0, type: 'slide', snap: true, range: 2.4, lift: 0,
+    face: { x: klx, z: klz + 10 }, look: new THREE.Vector3(klx, klgy + 1.2, klz + 2), back: 6,
+  });
 }
 
 // ---- Gol noktaları (otantik: iki ahşap kalas) -------------------------
@@ -1441,7 +1474,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v46 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v47 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1749,6 +1782,7 @@ function toggleSit() {
   else if (nearSit) {
     sitting = true; sitSpot = nearSit;
     if (sitSpot.snap) { player.position.x = sitSpot.x; player.position.z = sitSpot.z; }
+    if (sitSpot.type === 'slide' && slide) slide.t = 0;   // kaymaya baştan başla
   }
 }
 addEventListener('keydown', (e) => { if (!e.repeat && e.code === 'KeyE') toggleSit(); });
@@ -1877,6 +1911,15 @@ function update(dt) {
   }
   if (seesaw) seesaw.rotation.z = 0.16 * Math.sin(elapsed * 1.3);   // tahterevalli sallanır
 
+  // Kaydırak: tepeden dibe kay (bacaklar uzanmış, sırt yaslı)
+  if (slide && sitting && sitSpot && sitSpot.type === 'slide') {
+    slide.t = Math.min(1, slide.t + dt / 1.1);
+    const e = slide.t * slide.t;                    // hızlanarak iner
+    player.position.lerpVectors(slide.topPos, slide.botPos, e);
+    player.rotation.x = -slide.angle * 0.95;        // sırt yukarı, bacaklar ileri
+    if (slide.t >= 1) { sitting = false; sitSpot = null; player.rotation.x = 0; }
+  }
+
   // yönelme (yumuşak)
   let d = facing - player.rotation.y;
   d = Math.atan2(Math.sin(d), Math.cos(d));
@@ -1896,7 +1939,8 @@ function update(dt) {
   if (sitPromptEl) {
     if (sitting) { sitPromptEl.textContent = '🧍 Kalk'; sitPromptEl.classList.add('show'); }
     else if (nearSit) {
-      sitPromptEl.textContent = nearSit.type === 'vista' ? '🌄 Otur' : (nearSit.type === 'swing' ? '🪅 Sallan' : '🔥 Otur');
+      sitPromptEl.textContent = nearSit.type === 'vista' ? '🌄 Otur'
+        : (nearSit.type === 'swing' ? '🪅 Sallan' : (nearSit.type === 'slide' ? '🛝 Kay' : '🔥 Otur'));
       sitPromptEl.classList.add('show');
     }
     else sitPromptEl.classList.remove('show');
@@ -1949,6 +1993,13 @@ function update(dt) {
     const desired = new THREE.Vector3(swing.x + 8, swing.gy + 3.2, swing.z + 1.5);
     camera.position.lerp(desired, 1 - Math.pow(0.004, dt));
     camTarget.lerp(new THREE.Vector3(swing.x, swing.gy + 1.5, swing.z), 1 - Math.pow(0.004, dt));
+    camera.lookAt(camTarget);
+    camYaw = Math.atan2(camera.position.x - player.position.x, camera.position.z - player.position.z);
+  } else if (sitting && sitSpot && sitSpot.type === 'slide' && slide) {
+    // Kaydırak: yan kamera (kayışı gösterir)
+    const mid = slide.topPos.clone().lerp(slide.botPos, 0.5);
+    camera.position.lerp(new THREE.Vector3(mid.x + 8, mid.y + 3, mid.z), 1 - Math.pow(0.004, dt));
+    camTarget.lerp(mid, 1 - Math.pow(0.004, dt));
     camera.lookAt(camTarget);
     camYaw = Math.atan2(camera.position.x - player.position.x, camera.position.z - player.position.z);
   } else if (sitting && sitSpot) {
