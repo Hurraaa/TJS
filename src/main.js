@@ -1474,7 +1474,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v48 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v49 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1802,6 +1802,35 @@ if (fireBtnEl) {
   fireBtnEl.addEventListener('touchstart', (e) => { toggleFire(); e.preventDefault(); }, { passive: false });
 }
 
+// Göle taş sektirme
+let nearLake = false;
+const stones = [], lakeRipples = [];
+const LAKE_Y = heightAt(LAKE.x, LAKE.z) + 0.15;
+const _stoneGeo = roughen(new THREE.DodecahedronGeometry(0.16, 0), 0.04); _stoneGeo.scale(1.3, 0.6, 1);
+const _stoneMat = toon('#8b8f88');
+const _rippleGeo = new THREE.RingGeometry(0.3, 0.5, 24);
+function spawnRipple(x, z) {
+  const r = new THREE.Mesh(_rippleGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, depthWrite: false }));
+  r.rotation.x = -Math.PI / 2; r.position.set(x, LAKE_Y + 0.06, z); scene.add(r);
+  lakeRipples.push({ mesh: r, t: 0 });
+}
+function throwStone() {
+  if (!nearLake) return;
+  const dx = LAKE.x - player.position.x, dz = LAKE.z - player.position.z;
+  const dl = Math.hypot(dx, dz) || 1;
+  const s = new THREE.Mesh(_stoneGeo, _stoneMat);
+  s.position.set(player.position.x + (dx / dl) * 0.7, player.position.y + 1.4, player.position.z + (dz / dl) * 0.7);
+  s.castShadow = true; scene.add(s);
+  const sp = 15;
+  stones.push({ mesh: s, vx: (dx / dl) * sp, vy: 1.6, vz: (dz / dl) * sp, skips: 4, spin: 6 + Math.random() * 6 });
+}
+addEventListener('keydown', (e) => { if (!e.repeat && e.code === 'KeyQ') throwStone(); });
+const stoneBtnEl = document.getElementById('stoneBtn');
+if (stoneBtnEl) {
+  stoneBtnEl.addEventListener('click', throwStone);
+  stoneBtnEl.addEventListener('touchstart', (e) => { throwStone(); e.preventDefault(); }, { passive: false });
+}
+
 function update(dt) {
   // Otomatik saat: gece↔gündüz arasında yavaşça gidip gelir
   todTime += todDir * dt * 0.012;               // ~tek yön 80sn
@@ -1946,6 +1975,11 @@ function update(dt) {
     else sitPromptEl.classList.remove('show');
   }
   if (fireBtnEl) fireBtnEl.classList.toggle('show', nearFire);   // sadece yakınken
+
+  // Göl kıyısı: taş atma istemi
+  const ld = Math.hypot(player.position.x - LAKE.x, player.position.z - LAKE.z);
+  nearLake = ld > LAKE.r - 2 && ld < LAKE.r + 6 && !sitting;
+  if (stoneBtnEl) stoneBtnEl.classList.toggle('show', nearLake);
   if (warmEl) {
     const atFire = sitting && sitSpot && sitSpot.type === 'fire';
     const warmth = (fireOn ? 1 : 0) * (atFire ? 1 : THREE.MathUtils.clamp(1 - (fdist - 2) / 4, 0, 0.6));
@@ -2261,6 +2295,32 @@ function update(dt) {
     for (let i = 0; i < kiteTail.length; i++) kiteTail[i].rotation.z = Math.sin(t * 3 - i * 0.6) * 0.5;
     const pp = kiteLine.geometry.attributes.position;
     pp.setXYZ(1, cx, cy - 0.7, cz); pp.needsUpdate = true;
+  }
+
+  // Taşlar (suda sek-sek, sonra bat) + halkalar
+  for (let i = stones.length - 1; i >= 0; i--) {
+    const st = stones[i], s = st.mesh;
+    st.vy -= 26 * dt;
+    s.position.x += st.vx * dt; s.position.y += st.vy * dt; s.position.z += st.vz * dt;
+    s.rotation.x += st.spin * dt; s.rotation.z += st.spin * 0.5 * dt;
+    const inLake = (s.position.x - LAKE.x) ** 2 + (s.position.z - LAKE.z) ** 2 < LAKE.r * LAKE.r;
+    const surf = inLake ? LAKE_Y : heightAt(s.position.x, s.position.z) + 0.1;
+    if (st.vy < 0 && s.position.y <= surf) {
+      if (inLake && st.skips > 0) {                 // sek
+        spawnRipple(s.position.x, s.position.z);
+        s.position.y = surf; st.vy = 2.6 * (st.skips / 4);
+        st.vx *= 0.82; st.vz *= 0.82; st.skips--;
+      } else {                                       // battı / yere düştü
+        if (inLake) spawnRipple(s.position.x, s.position.z);
+        scene.remove(s); stones.splice(i, 1);
+      }
+    }
+  }
+  for (let i = lakeRipples.length - 1; i >= 0; i--) {
+    const rp = lakeRipples[i]; rp.t += dt;
+    const sc = 1 + rp.t * 6; rp.mesh.scale.set(sc, sc, sc);
+    rp.mesh.material.opacity = Math.max(0, 0.6 * (1 - rp.t / 1.3));
+    if (rp.t > 1.3) { scene.remove(rp.mesh); rp.mesh.material.dispose(); lakeRipples.splice(i, 1); }
   }
 
   clouds.rotation.y += dt * 0.005;
