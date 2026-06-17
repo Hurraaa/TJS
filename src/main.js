@@ -186,36 +186,85 @@ let water = null;
   scene.add(water);
 }
 
-// ---- Günün saati (atmosfer) -------------------------------------------
-// t: 0 = gün doğumu · 0.5 = öğle · 1 = gün batımı
-const _fogDay = new THREE.Color('#cfe6e0'), _fogWarm = new THREE.Color('#f2c79a');
+// ---- Gece öğeleri: yıldızlar + ay + ay ışığı --------------------------
+const moonLight = new THREE.DirectionalLight('#9fb4e6', 0);
+scene.add(moonLight); scene.add(moonLight.target);
+
+let stars;
+{
+  const N = 1300, pos = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) {
+    const v = new THREE.Vector3().randomDirection().multiplyScalar(900);
+    if (v.y < 40) v.y = Math.abs(v.y) + 40;     // üst yarıkürede tut
+    pos[i * 3] = v.x; pos[i * 3 + 1] = v.y; pos[i * 3 + 2] = v.z;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  stars = new THREE.Points(g, new THREE.PointsMaterial({
+    color: 0xffffff, size: 2.3, sizeAttenuation: false, transparent: true, opacity: 0, depthWrite: false, fog: false,
+  }));
+  scene.add(stars);
+}
+const moon = new THREE.Mesh(
+  new THREE.SphereGeometry(26, 24, 18),
+  new THREE.MeshBasicMaterial({ color: '#eef1ff', fog: false }));
+moon.visible = false;
+scene.add(moon);
+
+// ---- Günün saati: gece ↔ gündüz ---------------------------------------
+// t: 0 = gece · ~0.3 = şafak · 1 = parlak öğle  (sol 🌙 → sağ ☀️)
+const _fogDay = new THREE.Color('#cfe6e0'), _fogWarm = new THREE.Color('#f2c79a'), _fogNight = new THREE.Color('#0c1330');
 const _sunDay = new THREE.Color('#fff3da'), _sunWarm = new THREE.Color('#ff8a3d');
-const _hemiDay = new THREE.Color('#ffe9c8'), _hemiWarm = new THREE.Color('#ffcf9c');
+const _hemiDay = new THREE.Color('#ffe9c8'), _hemiNight = new THREE.Color('#36436e');
+const _MOON = new THREE.Vector3(), _tmpCol = new THREE.Color();
+let todIconEl = null;
 function setTimeOfDay(t) {
   t = THREE.MathUtils.clamp(t, 0, 1);
-  const day = Math.sin(t * Math.PI);          // 0 ufukta, 1 tepede
-  const warm = 1 - day;
-  const elevation = day * 55 + 3;
-  const azimuth = 70 + t * 140;
-  SUN_DIR.setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - elevation), THREE.MathUtils.degToRad(azimuth));
+  const elevationDeg = -16 + t * 76;            // güneş yüksekliği
+  const azimuth = 80 + t * 90;
+  SUN_DIR.setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - elevationDeg), THREE.MathUtils.degToRad(azimuth));
+  const day = THREE.MathUtils.clamp((elevationDeg + 4) / 12, 0, 1);   // 0 gece, 1 gündüz
+  const night = 1 - day;
+  const warm = THREE.MathUtils.clamp(1 - Math.abs(elevationDeg - 8) / 26, 0, 1) * day;
+
   const u = sky.material.uniforms;
   u.sunPosition.value.copy(SUN_DIR);
-  u.rayleigh.value = 1.1 + warm * 2.2;        // gün batımında daha kızıl
-  u.turbidity.value = 4 + warm * 6;
+  u.rayleigh.value = 1.0 + warm * 2.4;
+  u.turbidity.value = 3 + warm * 7;
+  u.mieCoefficient.value = 0.005 + day * 0.004;
+
   sun.color.copy(_sunDay).lerp(_sunWarm, warm);
-  sun.intensity = 1.5 + day * 1.3;
-  hemi.color.copy(_hemiDay).lerp(_hemiWarm, warm);
-  hemi.intensity = 0.45 + day * 0.45;
-  scene.fog.color.copy(_fogDay).lerp(_fogWarm, warm);
-  if (water) water.material.uniforms['sunDirection'].value.copy(SUN_DIR).normalize();
+  sun.intensity = 2.4 * day;
+
+  // Ay: güneşin tersinde, ufkun üstünde
+  _MOON.copy(SUN_DIR).negate();
+  if (_MOON.y < 0.1) _MOON.y = Math.abs(_MOON.y) + 0.1;
+  _MOON.normalize();
+  moonLight.position.copy(_MOON).multiplyScalar(120);
+  moonLight.target.position.set(0, 0, 0);
+  moonLight.intensity = night * 0.5;
+  moon.position.copy(_MOON).multiplyScalar(820); moon.position.y += 40;
+  moon.visible = night > 0.12;
+  stars.material.opacity = night;
+
+  hemi.color.copy(_hemiDay).lerp(_hemiNight, night);
+  hemi.intensity = 0.18 + day * 0.5;
+
+  _tmpCol.copy(_fogDay).lerp(_fogWarm, warm).lerp(_fogNight, night);
+  scene.fog.color.copy(_tmpCol);
+
+  if (water) water.material.uniforms['sunDirection'].value.copy(day > 0.1 ? SUN_DIR : _MOON).normalize();
+  if (todIconEl) todIconEl.textContent = day > 0.6 ? '☀️' : (day > 0.18 ? '🌅' : '🌙');
 }
-setTimeOfDay(0.2);                             // varsayılan: sıcak ikindi
+setTimeOfDay(0.62);                            // varsayılan: gündüz
 {
   const todEl = document.getElementById('tod');
+  todIconEl = document.getElementById('todIcon');
   if (todEl) {
-    todEl.value = '0.2';
+    todEl.value = '0.62';
     todEl.addEventListener('input', () => setTimeOfDay(parseFloat(todEl.value)));
   }
+  setTimeOfDay(0.62);                           // ikonu da güncelle
 }
 
 // ---- Dağlar -----------------------------------------------------------
@@ -745,7 +794,7 @@ function emote(name) {
   current = a;
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v20 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v21 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
