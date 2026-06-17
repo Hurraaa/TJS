@@ -260,16 +260,15 @@ function setTimeOfDay(t) {
   if (water) water.material.uniforms['sunDirection'].value.copy(day > 0.1 ? SUN_DIR : _MOON).normalize();
   if (todIconEl) todIconEl.textContent = day > 0.6 ? '☀️' : (day > 0.18 ? '🌅' : '🌙');
 }
-setTimeOfDay(0.62);                            // varsayılan: gündüz
-{
-  const todEl = document.getElementById('tod');
-  todIconEl = document.getElementById('todIcon');
-  if (todEl) {
-    todEl.value = '0.62';
-    todEl.addEventListener('input', () => setTimeOfDay(parseFloat(todEl.value)));
-  }
-  setTimeOfDay(0.62);                           // ikonu da güncelle
+// Otomatik gün-gece döngüsü (slider elle de ayarlanabilir)
+let todTime = 0.62, todDir = 1;
+const todSliderEl = document.getElementById('tod');
+todIconEl = document.getElementById('todIcon');
+if (todSliderEl) {
+  todSliderEl.value = String(todTime);
+  todSliderEl.addEventListener('input', () => { todTime = parseFloat(todSliderEl.value); });
 }
+setTimeOfDay(todTime);
 
 // ---- Kozmik & atmosferik dokunuşlar -----------------------------------
 const auroraMats = [];
@@ -852,6 +851,39 @@ let kite = null, kiteLine = null; const kiteTail = []; const kiteAnchor = new TH
   scene.add(kiteLine);
 }
 
+// ---- Oyun alanı + salıncak --------------------------------------------
+const SWING = { x: 32, z: -34 };
+let swing = null;
+{
+  const gy = heightAt(SWING.x, SWING.z);
+  // kumlu zemin
+  const sand = new THREE.Mesh(new THREE.CylinderGeometry(8, 8, 0.18, 28), toon('#e7d2a4'));
+  sand.position.set(SWING.x - 1, gy + 0.03, SWING.z); sand.receiveShadow = true; scene.add(sand);
+
+  const g = new THREE.Group(); g.position.set(SWING.x, gy, SWING.z); scene.add(g);
+  const barH = 3.0, halfW = 1.6, ropeLen = 2.2, frameMat = toon('#7a5236');
+  for (const sx of [-halfW, halfW]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.13, barH, 7), frameMat);
+    post.position.set(sx, barH / 2, 0); post.castShadow = true; addOutline(post, 0.03); g.add(post);
+    colliders.push({ x: SWING.x + sx, z: SWING.z, r: 0.3 });
+  }
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, halfW * 2 + 0.4, 8), frameMat);
+  bar.rotation.z = Math.PI / 2; bar.position.set(0, barH, 0); addOutline(bar, 0.03); g.add(bar);
+  const pivot = new THREE.Group(); pivot.position.set(0, barH, 0); g.add(pivot);
+  for (const sx of [-0.45, 0.45]) {
+    const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, ropeLen, 5), toon('#5a4326'));
+    rope.position.set(sx, -ropeLen / 2, 0); pivot.add(rope);
+  }
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.1, 0.5), toon('#9a6a3e'));
+  seat.position.set(0, -ropeLen, 0); seat.castShadow = true; addOutline(seat, 0.03); pivot.add(seat);
+  swing = { pivot, x: SWING.x, z: SWING.z, gy, barH, ropeLen };
+  // oyuncu salıncağa binebilsin (özel oturma noktası)
+  SITSPOTS.push({
+    x: SWING.x, z: SWING.z, type: 'swing', snap: true, range: 2.6, lift: 0,
+    face: { x: SWING.x, z: SWING.z + 12 }, look: new THREE.Vector3(SWING.x, gy + 1.4, SWING.z), back: 6,
+  });
+}
+
 // ---- Ateş böcekleri (gece) --------------------------------------------
 let firefliesMat = null;
 {
@@ -1243,7 +1275,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v38 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v39 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1389,7 +1421,12 @@ const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v
       if (runA) { runA.time = Math.random() * runA.getClip().duration; runA.play(); }
       kids.push({ g, mx, tx: x, tz: z, vy: 0, grounded: true, jumpCd: Math.random() * 3, retarget: 0 });
     };
-    for (let i = 0; i < 4; i++) spawnKid(-6 + Math.random() * 16, -16 + Math.random() * 14);
+    for (let i = 0; i < 6; i++) {
+      let kx, kz, tries = 0;
+      do { kx = (Math.random() - 0.5) * 140; kz = (Math.random() - 0.5) * 140; tries++; }
+      while (nearBuilt(kx, kz, 2) && tries < 12);
+      spawnKid(kx, kz);
+    }
   };
 
   // Sırayla CDN'leri dene; hepsi başarısızsa basit gövdeye düş
@@ -1565,6 +1602,13 @@ if (fireBtnEl) {
 }
 
 function update(dt) {
+  // Otomatik saat: gece↔gündüz arasında yavaşça gidip gelir
+  todTime += todDir * dt * 0.012;               // ~tek yön 80sn
+  if (todTime >= 1) { todTime = 1; todDir = -1; }
+  else if (todTime <= 0) { todTime = 0; todDir = 1; }
+  setTimeOfDay(todTime);
+  if (todSliderEl) todSliderEl.value = String(todTime);
+
   const run = keys['ShiftLeft'] || keys['ShiftRight'] || touchRun;
   const speed = run ? 11 : 6;
 
@@ -1632,6 +1676,21 @@ function update(dt) {
   if (player.position.y <= groundY) { player.position.y = groundY; vy = 0; grounded = true; }
   if (sitting && sitSpot && sitSpot.lift) player.position.y = groundY + sitSpot.lift;  // kütüğün üstünde
 
+  // Salıncak: binince oyuncuyu koltukla salla; boştayken hafif sallan
+  if (swing) {
+    const riding = sitting && sitSpot && sitSpot.type === 'swing';
+    const ang = riding ? 0.6 * Math.sin(elapsed * 1.9) : 0.12 * Math.sin(elapsed * 1.0);
+    swing.pivot.rotation.x = ang;
+    if (riding) {
+      const yOff = swing.barH - swing.ropeLen * Math.cos(ang);
+      const zOff = swing.ropeLen * Math.sin(ang);
+      player.position.set(swing.x, swing.gy + yOff + 0.05, swing.z + zOff);
+      player.rotation.x = ang * 0.5;            // gövde sallanmayla eğilsin
+    } else {
+      player.rotation.x = 0;
+    }
+  }
+
   // yönelme (yumuşak)
   let d = facing - player.rotation.y;
   d = Math.atan2(Math.sin(d), Math.cos(d));
@@ -1650,7 +1709,10 @@ function update(dt) {
   }
   if (sitPromptEl) {
     if (sitting) { sitPromptEl.textContent = '🧍 Kalk'; sitPromptEl.classList.add('show'); }
-    else if (nearSit) { sitPromptEl.textContent = nearSit.type === 'vista' ? '🌄 Otur' : '🔥 Otur'; sitPromptEl.classList.add('show'); }
+    else if (nearSit) {
+      sitPromptEl.textContent = nearSit.type === 'vista' ? '🌄 Otur' : (nearSit.type === 'swing' ? '🪅 Sallan' : '🔥 Otur');
+      sitPromptEl.classList.add('show');
+    }
     else sitPromptEl.classList.remove('show');
   }
   if (fireBtnEl) fireBtnEl.classList.toggle('show', nearFire);   // sadece yakınken
@@ -1696,7 +1758,14 @@ function update(dt) {
     camYaw += dy * Math.min(1, dt * 2.2);
   }
 
-  if (sitting && sitSpot) {
+  if (sitting && sitSpot && sitSpot.type === 'swing' && swing) {
+    // Salıncak: sabit yan kamera (sarkaç hareketini gösterir)
+    const desired = new THREE.Vector3(swing.x + 8, swing.gy + 3.2, swing.z + 1.5);
+    camera.position.lerp(desired, 1 - Math.pow(0.004, dt));
+    camTarget.lerp(new THREE.Vector3(swing.x, swing.gy + 1.5, swing.z), 1 - Math.pow(0.004, dt));
+    camera.lookAt(camTarget);
+    camYaw = Math.atan2(camera.position.x - player.position.x, camera.position.z - player.position.z);
+  } else if (sitting && sitSpot) {
     // Sinematik oturma kamerası: oyuncunun omzundan baktığı yöne (ateş ya da manzara)
     const f = sitSpot.face;
     let dx = f.x - player.position.x, dz = f.z - player.position.z;
@@ -1828,11 +1897,11 @@ function update(dt) {
       } else if (kids.length > 1 && r < 0.85) {       // başka çocuğu kovala
         const o = kids[(Math.random() * kids.length) | 0];
         k.tx = o.g.position.x; k.tz = o.g.position.z;
-      } else {
-        k.tx = THREE.MathUtils.clamp((Math.random() - 0.5) * 60, -klim, klim);
-        k.tz = THREE.MathUtils.clamp(-12 + (Math.random() - 0.5) * 60, -klim, klim);
+      } else {                                        // tüm haritada gez
+        k.tx = (Math.random() - 0.5) * 2 * klim;
+        k.tz = (Math.random() - 0.5) * 2 * klim;
       }
-      k.retarget = 1.4 + Math.random() * 2.2;
+      k.retarget = 1.6 + Math.random() * 2.6;
     }
     let dx = k.tx - k.g.position.x, dz = k.tz - k.g.position.z;
     const dist = Math.hypot(dx, dz) || 1;
