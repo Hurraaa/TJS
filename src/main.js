@@ -1474,7 +1474,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v49 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v50 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1816,13 +1816,16 @@ function spawnRipple(x, z) {
 }
 function throwStone() {
   if (!nearLake) return;
-  const dx = LAKE.x - player.position.x, dz = LAKE.z - player.position.z;
-  const dl = Math.hypot(dx, dz) || 1;
+  // baktığın yön = kameradan oyuncuya doğru (ekrana doğru)
+  let dx = player.position.x - camera.position.x, dz = player.position.z - camera.position.z;
+  let dl = Math.hypot(dx, dz);
+  if (dl < 1e-3) { dx = Math.sin(player.rotation.y); dz = Math.cos(player.rotation.y); dl = 1; }
+  dx /= dl; dz /= dl;
   const s = new THREE.Mesh(_stoneGeo, _stoneMat);
-  s.position.set(player.position.x + (dx / dl) * 0.7, player.position.y + 1.4, player.position.z + (dz / dl) * 0.7);
+  s.position.set(player.position.x + dx * 0.7, player.position.y + 1.4, player.position.z + dz * 0.7);
   s.castShadow = true; scene.add(s);
   const sp = 15;
-  stones.push({ mesh: s, vx: (dx / dl) * sp, vy: 1.6, vz: (dz / dl) * sp, skips: 4, spin: 6 + Math.random() * 6 });
+  stones.push({ mesh: s, vx: dx * sp, vy: 1.6, vz: dz * sp, skips: 4, spin: 6 + Math.random() * 6 });
 }
 addEventListener('keydown', (e) => { if (!e.repeat && e.code === 'KeyQ') throwStone(); });
 const stoneBtnEl = document.getElementById('stoneBtn');
