@@ -818,6 +818,40 @@ const SITSPOTS = [
     face: { x: -95, z: 40 }, look: new THREE.Vector3(-95, 20, 40), back: 5.5 },
 ];
 
+// ---- Oyuncaklar: top + uçurtma ----------------------------------------
+let ball = null; const ballState = { vx: 0, vy: 0, vz: 0, kickCd: 1 };
+{
+  const g = new THREE.Group();
+  const sph = new THREE.Mesh(new THREE.SphereGeometry(0.5, 18, 14), toon('#ff5a5a'));
+  sph.castShadow = true; addOutline(sph, 0.04); g.add(sph);
+  const band = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.13, 10, 24), toon('#fff3e0'));
+  g.add(band);
+  const band2 = band.clone(); band2.rotation.x = Math.PI / 2; g.add(band2);
+  g.position.set(2, heightAt(2, -12) + 0.5, -12);
+  scene.add(g); ball = g;
+}
+
+let kite = null, kiteLine = null; const kiteTail = []; const kiteAnchor = new THREE.Vector3();
+{
+  const g = new THREE.Group();
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2),
+    new THREE.MeshToonMaterial({ color: '#ff7ac0', side: THREE.DoubleSide, gradientMap: ramp }));
+  face.rotation.z = Math.PI / 4; g.add(face);
+  const spar1 = new THREE.Mesh(new THREE.BoxGeometry(0.04, 1.65, 0.04), toon('#6b4a30')); g.add(spar1);
+  const spar2 = spar1.clone(); spar2.rotation.z = Math.PI / 2; g.add(spar2);
+  for (let i = 0; i < 7; i++) {                       // kuyruk fiyonkları
+    const b = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.18),
+      new THREE.MeshToonMaterial({ color: i % 2 ? '#ffd24a' : '#6ad0ff', side: THREE.DoubleSide, gradientMap: ramp }));
+    b.position.set(0, -0.9 - i * 0.34, 0); g.add(b); kiteTail.push(b);
+  }
+  scene.add(g); kite = g;
+  kiteAnchor.set(9, heightAt(9, -8) + 0.4, -8);
+  kiteLine = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([kiteAnchor.clone(), kiteAnchor.clone()]),
+    new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45 }));
+  scene.add(kiteLine);
+}
+
 // ---- Ateş böcekleri (gece) --------------------------------------------
 let firefliesMat = null;
 {
@@ -1209,7 +1243,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v37 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v38 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1788,7 +1822,10 @@ function update(dt) {
     const k = kids[i];
     k.retarget -= dt;
     if (k.retarget <= 0) {
-      if (kids.length > 1 && Math.random() < 0.7) {
+      const r = Math.random();
+      if (ball && r < 0.5) {                          // topu kovala
+        k.tx = ball.position.x; k.tz = ball.position.z;
+      } else if (kids.length > 1 && r < 0.85) {       // başka çocuğu kovala
         const o = kids[(Math.random() * kids.length) | 0];
         k.tx = o.g.position.x; k.tz = o.g.position.z;
       } else {
@@ -1813,7 +1850,49 @@ function update(dt) {
     let yy = k.g.position.y + k.vy * dt;
     if (yy <= gy) { yy = gy; k.vy = 0; k.grounded = true; }
     k.g.position.y = yy;
+    // topa değince tekmele
+    if (ball) {
+      const bdx = ball.position.x - k.g.position.x, bdz = ball.position.z - k.g.position.z;
+      const bd = Math.hypot(bdx, bdz);
+      if (bd < 1.4) {
+        const n = bd || 1;
+        ballState.vx = (bdx / n) * 7; ballState.vz = (bdz / n) * 7; ballState.vy = 4.5; ballState.kickCd = 1.5;
+        k.retarget = 0;
+      }
+    }
     k.mx.update(dt);
+  }
+
+  // Top (zıpla-yuvarlan, ara sıra "tekme")
+  if (ball) {
+    const s = ballState; s.kickCd -= dt;
+    if (s.kickCd <= 0) {
+      const a = Math.random() * Math.PI * 2, f = 3 + Math.random() * 4;
+      s.vx = Math.cos(a) * f; s.vz = Math.sin(a) * f; s.vy = 5 + Math.random() * 3;
+      s.kickCd = 2.5 + Math.random() * 3;
+    }
+    s.vy -= 22 * dt;
+    ball.position.x = THREE.MathUtils.clamp(ball.position.x + s.vx * dt, -klim, klim);
+    ball.position.z = THREE.MathUtils.clamp(ball.position.z + s.vz * dt, -klim, klim);
+    let ny = ball.position.y + s.vy * dt;
+    const bgy = heightAt(ball.position.x, ball.position.z) + 0.5;
+    if (ny <= bgy) { ny = bgy; s.vy = -s.vy * 0.6; if (Math.abs(s.vy) < 1.5) s.vy = 0; s.vx *= 0.6; s.vz *= 0.6; }
+    ball.position.y = ny;
+    ball.rotation.x += s.vz * dt * 0.9; ball.rotation.z -= s.vx * dt * 0.9;
+  }
+
+  // Uçurtma (gökyüzünde süzülür, ipi yere bağlı)
+  if (kite) {
+    const t = elapsed;
+    const cx = kiteAnchor.x + Math.sin(t * 0.5) * 7;
+    const cz = kiteAnchor.z - 12 + Math.cos(t * 0.4) * 4;
+    const cy = 15 + Math.sin(t * 0.8) * 2.2;
+    kite.position.set(cx, cy, cz);
+    kite.rotation.z = Math.sin(t * 1.6) * 0.22;
+    kite.rotation.x = -0.3 + Math.sin(t * 1.2) * 0.12;
+    for (let i = 0; i < kiteTail.length; i++) kiteTail[i].rotation.z = Math.sin(t * 3 - i * 0.6) * 0.5;
+    const pp = kiteLine.geometry.attributes.position;
+    pp.setXYZ(1, cx, cy - 0.7, cz); pp.needsUpdate = true;
   }
 
   clouds.rotation.y += dt * 0.005;
