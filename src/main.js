@@ -1474,7 +1474,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v47 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v48 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1985,7 +1985,7 @@ function update(dt) {
     const targetYaw = facing - Math.PI;           // kamera, gidiş yönünün arkasında
     let dy = targetYaw - camYaw;
     dy = Math.atan2(Math.sin(dy), Math.cos(dy));
-    camYaw += dy * Math.min(1, dt * 2.2);
+    camYaw += dy * Math.min(1, dt * 1.3);          // GTA gibi gecikmeli arkaya geçiş
   }
 
   if (sitting && sitSpot && sitSpot.type === 'swing' && swing) {
