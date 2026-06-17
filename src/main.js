@@ -1475,7 +1475,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v52 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v53 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1572,11 +1572,12 @@ const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v
       colliders.push({ x, z, r: 0.6 });
 
       // Selama karşılık: ayakta duranlar el sallar (oturanlar 'evet' diye başını sallar)
+      const rec = { x, z, g, turn: null, greet: null };
       const backClipName = clip === 'sitting' ? 'yes' : 'wave';
       const backClip = byName[backClipName];
-      let greet = null;
       if (backClip && baseAction) {
-        greet = () => {
+        rec.greet = () => {
+          rec.turn = Math.atan2(player.position.x - x, player.position.z - z);  // önce yüzünü oyuncuya dön
           const w = mx.clipAction(backClip);
           baseAction.fadeOut(0.2);
           w.reset(); w.setLoop(THREE.LoopOnce, 1); w.clampWhenFinished = false; w.fadeIn(0.2).play();
@@ -1589,7 +1590,7 @@ const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v
           mx.addEventListener('finished', onFin);
         };
       }
-      npcs.push({ x, z, greet });
+      npcs.push(rec);
     };
     // ateş başında kütüklerin ÜSTÜNDE oturanlar (bank 0 ve 2; bank 1 oyuncuya)
     const sa = (i) => (i / 3) * Math.PI * 2 + 0.5;
@@ -2179,6 +2180,15 @@ function update(dt) {
 
   // NPC animasyonları
   for (let i = 0; i < npcMixers.length; i++) npcMixers[i].update(dt);
+  // Selam verirken yüzünü oyuncuya dön
+  for (let i = 0; i < npcs.length; i++) {
+    const n = npcs[i];
+    if (n.turn === null) continue;
+    let d = n.turn - n.g.rotation.y;
+    d = Math.atan2(Math.sin(d), Math.cos(d));
+    n.g.rotation.y += d * Math.min(1, dt * 6);
+    if (Math.abs(d) < 0.02) n.turn = null;
+  }
 
   // Oynayan çocuklar: gündüz oyna, gece eve git
   const klim = WORLD / 2 - 8;
