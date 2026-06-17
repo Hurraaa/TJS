@@ -1094,6 +1094,7 @@ scene.add(player);
 let mixer = null;
 const actions = {};
 const npcMixers = [];          // NPC animasyon mikserleri
+const npcs = [];               // {x, z, greet} — selama karşılık verenler
 let current = null;
 let emoting = null;            // sürekli emote (dans), boştayken oynar
 let oneShotActive = false;     // tek seferlik emote (el salla) oynuyor mu
@@ -1119,9 +1120,18 @@ function emote(name) {
   a.reset(); a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true;
   a.fadeIn(0.15).play();
   current = a;
+
+  // Selam verince yakındaki NPC'ler karşılık versin
+  if (name === 'wave') {
+    for (const n of npcs) {
+      if (!n.greet) continue;
+      const d = Math.hypot(player.position.x - n.x, player.position.z - n.z);
+      if (d < 11) setTimeout(n.greet, 250 + Math.random() * 400);
+    }
+  }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v33 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v34 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1197,14 +1207,35 @@ const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v
       scene.add(g);
       const mx = new THREE.AnimationMixer(npc);
       const c = byName[clip];
+      let baseAction = null;
       if (c) {
-        const a = mx.clipAction(c);
-        if (clip === 'sitting') { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
-        else a.time = Math.random() * c.duration;   // senkron olmasın
-        a.play();
+        baseAction = mx.clipAction(c);
+        if (clip === 'sitting') { baseAction.setLoop(THREE.LoopOnce, 1); baseAction.clampWhenFinished = true; }
+        else baseAction.time = Math.random() * c.duration;   // senkron olmasın
+        baseAction.play();
       }
       npcMixers.push(mx);
       colliders.push({ x, z, r: 0.6 });
+
+      // Selama karşılık: ayakta duranlar el sallar (oturanlar 'evet' diye başını sallar)
+      const backClipName = clip === 'sitting' ? 'yes' : 'wave';
+      const backClip = byName[backClipName];
+      let greet = null;
+      if (backClip && baseAction) {
+        greet = () => {
+          const w = mx.clipAction(backClip);
+          baseAction.fadeOut(0.2);
+          w.reset(); w.setLoop(THREE.LoopOnce, 1); w.clampWhenFinished = false; w.fadeIn(0.2).play();
+          const onFin = (e) => {
+            if (e.action !== w) return;
+            mx.removeEventListener('finished', onFin);
+            w.fadeOut(0.3);
+            baseAction.reset().fadeIn(0.3).play();
+          };
+          mx.addEventListener('finished', onFin);
+        };
+      }
+      npcs.push({ x, z, greet });
     };
     // ateş başında oturanlar
     spawnNPC(CAMPFIRE.x + 1.7, CAMPFIRE.z + 1.4, 'sitting', CAMPFIRE.x, CAMPFIRE.z);
