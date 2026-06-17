@@ -124,6 +124,7 @@ function roughen(geo, amount = 0.12) {
 // ---- Zemin (yumuşak tepeler) ------------------------------------------
 const WORLD = 260;
 const colliders = [];                          // {x, z, r} — katı engeller (çarpışma)
+const glowMats = [];                           // gece parlayan malzemeler {mat, base, phase}
 function heightAt(x, z) {
   return Math.sin(x * 0.045) * 2.4 + Math.cos(z * 0.05) * 2.2
        + Math.sin((x + z) * 0.018) * 3.0
@@ -599,6 +600,37 @@ function makeCampfire(fx, fz) {
 const CAMPFIRE = { x: 12, z: 10 };
 makeCampfire(CAMPFIRE.x, CAMPFIRE.z);
 
+// ---- Manzara noktası (göl/şelale/dağ manzarasına bakan ahşap teras) ----
+const VISTA = { x: -10, z: 40 };
+{
+  const vy = heightAt(VISTA.x, VISTA.z);
+  const g = new THREE.Group();
+  g.position.set(VISTA.x, vy, VISTA.z);
+  scene.add(g);
+  // Ahşap teras (alçak, yere basık → yere oturma pozu uyumlu)
+  const deck = new THREE.Mesh(roughen(new THREE.BoxGeometry(3.4, 0.22, 2.8), 0.02), toon('#9c7a4e'));
+  deck.position.y = 0.05; deck.receiveShadow = true; deck.castShadow = true; addOutline(deck, 0.03); g.add(deck);
+  // Yan oturma kütüğü
+  const log = new THREE.Mesh(roughen(new THREE.CylinderGeometry(0.32, 0.34, 2.2, 8), 0.03), toon('#7a5236'));
+  log.rotation.z = Math.PI / 2; log.position.set(0.2, 0.45, -1.05); log.castShadow = true; addOutline(log, 0.03); g.add(log);
+  // Fener (gece parlar)
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 1.6, 6), toon('#4a3a2a'));
+  post.position.set(-1.5, 0.85, -1.1); post.castShadow = true; g.add(post);
+  const lampMat = new THREE.MeshToonMaterial({ color: '#5a4326', emissive: new THREE.Color('#ffcf6b'), emissiveIntensity: 0, gradientMap: ramp });
+  const lamp = new THREE.Mesh(new THREE.IcosahedronGeometry(0.22, 0), lampMat);
+  lamp.position.set(-1.5, 1.72, -1.1); g.add(lamp);
+  glowMats.push({ mat: lampMat, base: 2.2, phase: 0 });
+}
+
+// ---- Oturma noktaları (kamp ateşi + manzara) --------------------------
+const _fy = heightAt(CAMPFIRE.x, CAMPFIRE.z);
+const SITSPOTS = [
+  { x: CAMPFIRE.x, z: CAMPFIRE.z, type: 'fire', snap: false, range: 3.4,
+    face: { x: CAMPFIRE.x, z: CAMPFIRE.z }, look: new THREE.Vector3(CAMPFIRE.x, _fy + 1.0, CAMPFIRE.z), back: 3.6 },
+  { x: VISTA.x, z: VISTA.z, type: 'vista', snap: true, range: 3.0,
+    face: { x: -95, z: 40 }, look: new THREE.Vector3(-95, 20, 40), back: 5.5 },
+];
+
 // ---- Ateş böcekleri (gece) --------------------------------------------
 let firefliesMat = null;
 {
@@ -736,7 +768,6 @@ for (let i = 0; i < 40; i++) {
 }
 
 // ---- Biyolüminesan flora (gece parlar) --------------------------------
-const glowMats = [];
 function makeCrystalGeo() {
   const parts = [];
   for (let i = 0; i < 4; i++) {
@@ -979,7 +1010,7 @@ function emote(name) {
   current = a;
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v28 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v29 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1190,13 +1221,17 @@ let vy = 0, grounded = true, walkPhase = 0, facing = Math.PI;
 let elapsed = 0;
 const clock = new THREE.Clock();
 
-// Kamp ateşinde oturma / ısınma
+// Oturma (kamp ateşi + manzara noktası) / ısınma
 let sitting = false, nearFire = false;
+let sitSpot = null, nearSit = null;
 const warmEl = document.getElementById('warm');
 const sitPromptEl = document.getElementById('sitPrompt');
 function toggleSit() {
-  if (sitting) sitting = false;
-  else if (nearFire) sitting = true;
+  if (sitting) { sitting = false; sitSpot = null; }
+  else if (nearSit) {
+    sitting = true; sitSpot = nearSit;
+    if (sitSpot.snap) { player.position.x = sitSpot.x; player.position.z = sitSpot.z; }
+  }
 }
 addEventListener('keydown', (e) => { if (!e.repeat && e.code === 'KeyE') toggleSit(); });
 if (sitPromptEl) {
@@ -1235,8 +1270,12 @@ function update(dt) {
 
   // Otururken hareket girişi gelirse ayağa kalk; otururken hareketi kilitle
   if (sitting) {
-    if (move.lengthSq() > 0.0004 || touchJump || keys['Space']) sitting = false;
-    else { move.set(0, 0, 0); facing = Math.atan2(CAMPFIRE.x - player.position.x, CAMPFIRE.z - player.position.z); }
+    if (move.lengthSq() > 0.0004 || touchJump || keys['Space']) { sitting = false; sitSpot = null; }
+    else {
+      move.set(0, 0, 0);
+      const f = sitSpot ? sitSpot.face : CAMPFIRE;
+      facing = Math.atan2(f.x - player.position.x, f.z - player.position.z);
+    }
   }
 
   const moving = move.lengthSq() > 0.0004;
@@ -1283,17 +1322,26 @@ function update(dt) {
   d = Math.atan2(Math.sin(d), Math.cos(d));
   player.rotation.y += d * Math.min(1, dt * 12);
 
-  // Kamp ateşine yakınlık + oturma istemi + ısınma vinyeti
+  // Oturma noktalarına yakınlık + istem + ısınma vinyeti
   const fdist = Math.hypot(player.position.x - CAMPFIRE.x, player.position.z - CAMPFIRE.z);
   nearFire = fdist < 3.4;
+  nearSit = null;
+  if (!sitting) {
+    let best = Infinity;
+    for (const sp of SITSPOTS) {
+      const dd = Math.hypot(player.position.x - sp.x, player.position.z - sp.z);
+      if (dd < sp.range && dd < best) { best = dd; nearSit = sp; }
+    }
+  }
   if (sitPromptEl) {
-    if (sitting) { sitPromptEl.textContent = '🔥 Kalk'; sitPromptEl.classList.add('show'); }
-    else if (nearFire) { sitPromptEl.textContent = '🔥 Otur'; sitPromptEl.classList.add('show'); }
+    if (sitting) { sitPromptEl.textContent = '🧍 Kalk'; sitPromptEl.classList.add('show'); }
+    else if (nearSit) { sitPromptEl.textContent = nearSit.type === 'vista' ? '🌄 Otur' : '🔥 Otur'; sitPromptEl.classList.add('show'); }
     else sitPromptEl.classList.remove('show');
   }
   if (fireBtnEl) fireBtnEl.classList.toggle('show', nearFire);   // sadece yakınken
   if (warmEl) {
-    const warmth = (fireOn ? 1 : 0) * (sitting ? 1 : THREE.MathUtils.clamp(1 - (fdist - 2) / 4, 0, 0.6));
+    const atFire = sitting && sitSpot && sitSpot.type === 'fire';
+    const warmth = (fireOn ? 1 : 0) * (atFire ? 1 : THREE.MathUtils.clamp(1 - (fdist - 2) / 4, 0, 0.6));
     warmEl.style.opacity = warmth.toFixed(2);
   }
 
@@ -1333,20 +1381,19 @@ function update(dt) {
     camYaw += dy * Math.min(1, dt * 2.2);
   }
 
-  if (sitting) {
-    // Sinematik ateş kamerası: oyuncunun omzundan ateşe bakar
-    const fy = heightAt(CAMPFIRE.x, CAMPFIRE.z);
-    let dx = player.position.x - CAMPFIRE.x, dz = player.position.z - CAMPFIRE.z;
-    const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
-    const side = 1.6;
+  if (sitting && sitSpot) {
+    // Sinematik oturma kamerası: oyuncunun omzundan baktığı yöne (ateş ya da manzara)
+    const f = sitSpot.face;
+    let dx = f.x - player.position.x, dz = f.z - player.position.z;
+    const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;          // bakış yönü
+    const back = sitSpot.back, side = 1.6;
     const desired = new THREE.Vector3(
-      player.position.x + dx * 3.6 - dz * side,
+      player.position.x - dx * back - dz * side,                      // oyuncunun arkasında
       player.position.y + 2.6,
-      player.position.z + dz * 3.6 + dx * side);
+      player.position.z - dz * back + dx * side);
     camera.position.lerp(desired, 1 - Math.pow(0.0025, dt));
-    camTarget.lerp(new THREE.Vector3((player.position.x + CAMPFIRE.x) / 2, fy + 1.1, (player.position.z + CAMPFIRE.z) / 2), 1 - Math.pow(0.0025, dt));
+    camTarget.lerp(sitSpot.look, 1 - Math.pow(0.0025, dt));
     camera.lookAt(camTarget);
-    // Kalkınca yumuşak geçiş için yaw'ı güncel tut
     camYaw = Math.atan2(camera.position.x - player.position.x, camera.position.z - player.position.z);
   } else {
     // GTA tarzı takip kamerası
