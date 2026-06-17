@@ -785,14 +785,23 @@ houseSpots.forEach((spot, i) => {
   const [bc, rc] = houseColors[i % houseColors.length];
   const W = 5 + Math.random() * 2.5, D = 4.5 + Math.random() * 2;
   const h = makeHouse(bc, rc, { W, H: 3.5 + Math.random() * 1.5, D });
-  // Tabanı ayak izinin en alçak köşesine oturt → hiçbir taraf havada kalmaz
-  const R = Math.max(W, D) * 0.6;
-  let gy = heightAt(x, z);
+
+  // Ayak izi yükseklikleri (min/max)
+  const R = Math.max(W, D) * 0.55;
+  let gMin = Infinity, gMax = heightAt(x, z);
   for (let k = 0; k < 8; k++) {
     const a = (k / 8) * Math.PI * 2;
-    gy = Math.min(gy, heightAt(x + Math.cos(a) * R, z + Math.sin(a) * R));
+    const gh = heightAt(x + Math.cos(a) * R, z + Math.sin(a) * R);
+    gMin = Math.min(gMin, gh); gMax = Math.max(gMax, gh);
   }
-  h.position.set(x, gy - 0.15, z);
+  // Temel bloğu eğimdeki boşluğu doldurur; gövde en yüksek köşeye oturur
+  const fh = (gMax - gMin) + 1.4;
+  const found = new THREE.Mesh(new THREE.BoxGeometry(W * 0.98, fh, D * 0.98), toon('#7c736a'));
+  found.position.y = 0.1 - fh / 2;
+  found.castShadow = true; found.receiveShadow = true; addOutline(found, 0.04);
+  h.add(found);
+
+  h.position.set(x, gMax, z);              // ne gömülür ne havada kalır
   h.rotation.y = Math.random() * Math.PI;
   housesProc.add(h);
   colliders.push({ x, z, r: Math.max(W, D) * 0.55 });
@@ -925,7 +934,7 @@ function emote(name) {
   current = a;
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v26 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v27 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
