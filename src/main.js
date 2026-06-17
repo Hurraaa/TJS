@@ -440,7 +440,7 @@ for (let i = 0; i < 16; i++) {
   const cz = (Math.random() - 0.5) * (WORLD - 60);
   const [wc, spc] = bflyColors[i % bflyColors.length];
   const b = makeButterfly(wc, spc);
-  b.scale.setScalar(0.85 + Math.random() * 0.4);
+  b.scale.setScalar(0.42 + Math.random() * 0.22);
   scene.add(b);
   butterflies.push({
     g: b, cx, cz,
@@ -722,7 +722,7 @@ function emote(name) {
   current = a;
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v18 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v19 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
