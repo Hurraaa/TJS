@@ -6,6 +6,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 /* =========================================================================
    Ghibli Dünyası — stilize 3B açık dünya (Three.js)
@@ -374,27 +375,49 @@ function scatterGrass(count = 4000) {
 }
 scene.add(scatterGrass(6500));
 
-// ---- Çiçekler (renk için) ---------------------------------------------
-function scatterFlowers(color, count) {
-  const petal = new THREE.SphereGeometry(0.16, 6, 5);
-  petal.scale(1, 0.5, 1); petal.translate(0, 0.7, 0);
-  const mesh = new THREE.InstancedMesh(petal, toon(color), count);
-  mesh.castShadow = false;
-  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1);
+// ---- Çiçekler (sap + göbek + yapraklar, vertex renkli) ----------------
+function paintGeo(geo, hex) {
+  const c = new THREE.Color(hex), n = geo.attributes.position.count;
+  const arr = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { arr[i * 3] = c.r; arr[i * 3 + 1] = c.g; arr[i * 3 + 2] = c.b; }
+  geo.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+  return geo;
+}
+function makeFlowerGeo(petalHex) {
+  const parts = [];
+  const stem = new THREE.CylinderGeometry(0.03, 0.045, 0.55, 5); stem.translate(0, 0.27, 0);
+  parts.push(paintGeo(stem, '#4f8c3f'));
+  const center = new THREE.SphereGeometry(0.11, 8, 6); center.translate(0, 0.62, 0);
+  parts.push(paintGeo(center, '#ffd24a'));
+  for (let i = 0; i < 5; i++) {                 // 5 yaprak, göbeğin etrafında
+    const p = new THREE.SphereGeometry(0.13, 7, 6); p.scale(1.1, 0.32, 1.1);
+    const a = (i / 5) * Math.PI * 2;
+    p.translate(Math.cos(a) * 0.17, 0.62, Math.sin(a) * 0.17);
+    parts.push(paintGeo(p, petalHex));
+  }
+  return mergeGeometries(parts, false);
+}
+function scatterFlowers(petalHex, count) {
+  const mesh = new THREE.InstancedMesh(
+    makeFlowerGeo(petalHex),
+    new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: ramp }),
+    count);
+  mesh.castShadow = true;
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3();
   let n = 0;
   for (let i = 0; i < count; i++) {
-    const x = (Math.random() - 0.5) * (WORLD - 40);
-    const z = (Math.random() - 0.5) * (WORLD - 40);
+    const x = (Math.random() - 0.5) * (WORLD - 36);
+    const z = (Math.random() - 0.5) * (WORLD - 36);
     if (Math.abs(x) < 6) continue;
-    const sc = 0.7 + Math.random() * 0.7;
-    s.setScalar(sc);
+    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.random() * Math.PI * 2);
+    s.setScalar(1.1 + Math.random() * 0.9);
     m.compose(new THREE.Vector3(x, heightAt(x, z), z), q, s);
     mesh.setMatrixAt(n++, m);
   }
   mesh.count = n; mesh.instanceMatrix.needsUpdate = true;
   return mesh;
 }
-['#f7f3e8', '#ffd95e', '#ff8fb1', '#b48cff'].forEach((c) => scene.add(scatterFlowers(c, 110)));
+['#ff7aa2', '#ffe14d', '#ffffff', '#b88cff', '#ff9e5e'].forEach((c) => scene.add(scatterFlowers(c, 120)));
 
 // ---- Kelebekler -------------------------------------------------------
 const butterflies = [];
@@ -722,7 +745,7 @@ function emote(name) {
   current = a;
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v19 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v20 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
