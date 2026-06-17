@@ -1275,7 +1275,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v39 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v40 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1934,6 +1934,14 @@ function update(dt) {
 
   // Top (zıpla-yuvarlan, ara sıra "tekme")
   if (ball) {
+    // Oyuncu topa vurabilir (koşarken daha sert)
+    const pdx = ball.position.x - player.position.x, pdz = ball.position.z - player.position.z;
+    const pd = Math.hypot(pdx, pdz);
+    if (pd < 1.6) {
+      const n = pd || 1, pw = 8 + Math.hypot(vel.x, vel.z) * 0.8;
+      ballState.vx = (pdx / n) * pw; ballState.vz = (pdz / n) * pw; ballState.vy = 5;
+      ballState.kickCd = 1.6;
+    }
     const s = ballState; s.kickCd -= dt;
     if (s.kickCd <= 0) {
       const a = Math.random() * Math.PI * 2, f = 3 + Math.random() * 4;
