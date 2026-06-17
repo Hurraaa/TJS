@@ -128,6 +128,7 @@ const colliders = [];                          // {x, z, r} — katı engeller (
 const glowMats = [];                           // gece parlayan malzemeler {mat, base, phase}
 const lilies = [];                             // göl nilüferleri (hafif salınır)
 const dragonflies = [];                        // su üstünde uçan yusufçuklar
+const frogs = [];                              // yaklaşınca zıplayıp kaçan kurbağalar
 function heightAt(x, z) {
   return Math.sin(x * 0.045) * 2.4 + Math.cos(z * 0.05) * 2.2
        + Math.sin((x + z) * 0.018) * 3.0
@@ -235,8 +236,9 @@ let water = null;
     lilies.push({ g, phase: Math.random() * 6.28, baseY: wy });
   }
 
-  // Birkaç nilüferin üstüne kurbağa
+  // Kurbağalar (nilüfer üstünde; yaklaşınca zıplayıp kaçar)
   const frogColors = ['#5fae3f', '#4f9a3a'];
+  const fbaseY = wy + 0.12;
   for (let i = 0; i < 3 && lilies.length; i++) {
     const L = lilies[(Math.random() * lilies.length) | 0];
     const f = new THREE.Group();
@@ -246,7 +248,9 @@ let water = null;
       const eye = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), toon('#26331a'));
       eye.position.set(sx * 0.09, 0.14, 0.08); f.add(eye);
     }
-    f.position.set(0, 0.12, 0); L.g.add(f);
+    f.position.set(L.g.position.x, fbaseY, L.g.position.z);
+    scene.add(f);
+    frogs.push({ g: f, baseY: fbaseY, vx: 0, vy: 0, vz: 0, hopping: false, phase: Math.random() * 6.28 });
   }
 }
 
@@ -1603,7 +1607,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v58 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v59 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -2255,6 +2259,31 @@ function update(dt) {
     d.g.rotation.y = Math.atan2(-Math.sin(t) * d.r, Math.cos(t * 1.3) * d.r * 1.3);
     const fl = Math.sin(elapsed * 40 + d.phase) * 0.5;
     for (let w = 0; w < d.wings.length; w++) d.wings[w].rotation.x = fl;
+  }
+  // Kurbağalar: oyuncu yaklaşınca ters yöne zıplayıp kaçar
+  for (let i = 0; i < frogs.length; i++) {
+    const f = frogs[i], p = f.g.position;
+    const pdx = p.x - player.position.x, pdz = p.z - player.position.z;
+    const pd = Math.hypot(pdx, pdz);
+    if (!f.hopping && pd < 5) {                       // ürküp zıpla
+      const n = pd || 1;
+      f.vx = (pdx / n) * 3.2; f.vz = (pdz / n) * 3.2; f.vy = 4.2; f.hopping = true;
+      f.g.rotation.y = Math.atan2(pdx, pdz);
+    }
+    if (f.hopping) {
+      f.vy -= 22 * dt;
+      p.x += f.vx * dt; p.z += f.vz * dt; p.y += f.vy * dt;
+      // göl alanında kal
+      const lr = Math.hypot(p.x - LAKE.x, p.z - LAKE.z);
+      if (lr > LAKE.r - 1) { f.vx *= -0.5; f.vz *= -0.5; }
+      if (p.y <= f.baseY) {                            // kondu
+        p.y = f.baseY;
+        if (pd < 6) { const n = pd || 1; f.vx = (pdx / n) * 3.2; f.vz = (pdz / n) * 3.2; f.vy = 4.2; } // hâlâ yakınsa tekrar zıpla
+        else { f.hopping = false; f.vx = f.vz = 0; }
+      }
+    } else {
+      f.g.position.y = f.baseY + Math.sin(elapsed * 2 + f.phase) * 0.02;   // hafif nefes
+    }
   }
 
   // Şelale
