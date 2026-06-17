@@ -512,6 +512,20 @@ const waterfallParts = [];
   scene.add(fall);
   waterfallParts.push({ type: 'fall', mat: fallMat });
 
+  // Tepe kaynağı: su, kayalıkların arasından/dudağın altından çıkıyormuş gibi görünsün
+  for (let i = 0; i < 7; i++) {
+    const r = 1.7 + Math.random() * 1.8;
+    const rock = new THREE.Mesh(roughen(new THREE.DodecahedronGeometry(r, 0), r * 0.2), toon('#777d77'));
+    const ang = Math.random() * Math.PI * 2;
+    rock.position.set(baseX - 1.2 + Math.cos(ang) * 2.2, topY - 0.6 + (Math.random() - 0.5) * 2.4, baseZ + Math.sin(ang) * 3.6);
+    rock.rotation.set(Math.random(), Math.random(), Math.random());
+    rock.castShadow = true; addOutline(rock, 0.06); scene.add(rock);
+  }
+  // Öne sarkan kaya dudağı — perdenin düz üst kenarını maskeler
+  const lip = new THREE.Mesh(roughen(new THREE.BoxGeometry(1.6, 1.1, 7.4), 0.12), toon('#6c726c'));
+  lip.position.set(baseX + 0.5, topY + 0.25, baseZ); lip.rotation.z = 0.05;
+  lip.castShadow = true; addOutline(lip, 0.05); scene.add(lip);
+
   // Dip köpük — yumuşak, çalkantılı disk (shader)
   const foamMat = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false,
@@ -550,6 +564,25 @@ const waterfallParts = [];
     ripples.push({ mesh: rg, phase: i / 4 });
   }
   waterfallParts.push({ type: 'ripples', list: ripples });
+
+  // Sıçrayan su damlaları (dibe çarpınca yukarı-dışa fışkırır)
+  const SN = 70;
+  const spos = new Float32Array(SN * 3), svel = new Float32Array(SN * 3);
+  const resetSplash = (i) => {
+    spos[i * 3] = baseX + (Math.random() - 0.5) * 1.6;
+    spos[i * 3 + 1] = lakeY + 0.2;
+    spos[i * 3 + 2] = baseZ + (Math.random() - 0.5) * 1.6;
+    const a = Math.random() * Math.PI * 2, sp = 1.4 + Math.random() * 2.8;
+    svel[i * 3] = Math.cos(a) * sp; svel[i * 3 + 1] = 3.2 + Math.random() * 3.5; svel[i * 3 + 2] = Math.sin(a) * sp;
+  };
+  for (let i = 0; i < SN; i++) { resetSplash(i); spos[i * 3 + 1] = lakeY + Math.random() * 3; }
+  const splashGeo = new THREE.BufferGeometry();
+  splashGeo.setAttribute('position', new THREE.BufferAttribute(spos, 3));
+  const splash = new THREE.Points(splashGeo, new THREE.PointsMaterial({
+    color: 0xffffff, size: 0.5, transparent: true, opacity: 0.9, depthWrite: false, sizeAttenuation: true,
+  }));
+  scene.add(splash);
+  waterfallParts.push({ type: 'splash', geo: splashGeo, vel: svel, base: lakeY, reset: resetSplash });
 
   // Buhar (mist) parçacıkları
   const N = 70;
@@ -883,7 +916,7 @@ let kite = null, kiteLine = null; const kiteTail = []; const kiteAnchor = new TH
 
 // ---- Oyun alanı + salıncak --------------------------------------------
 const SWING = { x: 32, z: -34 };
-let swing = null;
+let swing = null, seesaw = null;
 {
   const gy = heightAt(SWING.x, SWING.z);
   // kumlu zemin
@@ -912,6 +945,25 @@ let swing = null;
     x: SWING.x, z: SWING.z, type: 'swing', snap: true, range: 2.6, lift: 0,
     face: { x: SWING.x, z: SWING.z + 12 }, look: new THREE.Vector3(SWING.x, gy + 1.4, SWING.z), back: 6,
   });
+
+  // Tahterevalli (hafifçe sallanır)
+  const sx = SWING.x + 6, sz = SWING.z + 3.5, sgy = heightAt(sx, sz);
+  const tg = new THREE.Group(); tg.position.set(sx, sgy, sz); scene.add(tg);
+  const fulc = new THREE.Mesh(roughen(new THREE.CylinderGeometry(0.06, 0.5, 0.85, 4), 0.02), toon('#7a5236'));
+  fulc.position.y = 0.42; fulc.castShadow = true; addOutline(fulc, 0.03); tg.add(fulc);
+  const pv = new THREE.Group(); pv.position.y = 0.85; tg.add(pv);
+  const plank = new THREE.Mesh(roughen(new THREE.BoxGeometry(4.4, 0.16, 0.5), 0.02), toon('#9a6a3e'));
+  plank.castShadow = true; addOutline(plank, 0.03); pv.add(plank);
+  const seatCols = ['#c0584f', '#4a7ec0'];
+  for (let s = 0; s < 2; s++) {
+    const ex = s === 0 ? -2 : 2;
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.42, 6), toon('#6b4a30'));
+    handle.position.set(ex, 0.27, 0); pv.add(handle);
+    const seatb = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.1, 0.5), toon(seatCols[s]));
+    seatb.position.set(ex, 0.13, 0); addOutline(seatb, 0.03); pv.add(seatb);
+  }
+  seesaw = pv;
+  colliders.push({ x: sx, z: sz, r: 1.4 });
 }
 
 // ---- Gol noktaları (otantik: iki ahşap kalas) -------------------------
@@ -965,6 +1017,21 @@ function groundLine(x1, z1, x2, z2) {
 }
 // topu sahanın ortasına al
 if (ball) ball.position.set(FIELD.x, heightAt(FIELD.x, FIELD.z) + 0.5, FIELD.z);
+
+// ---- Seksek (toprağa tebeşirle çizilmiş) ------------------------------
+{
+  const hx = 22, hz0 = 14, s = 1.25;
+  const sq = (cx, cz, a) => {
+    const h = a / 2;
+    groundLine(cx - h, cz - h, cx + h, cz - h);
+    groundLine(cx + h, cz - h, cx + h, cz + h);
+    groundLine(cx + h, cz + h, cx - h, cz + h);
+    groundLine(cx - h, cz + h, cx - h, cz - h);
+  };
+  const rows = [[0], [0], [0], [-0.5, 0.5], [0], [-0.5, 0.5], [0]];
+  let zc = hz0;
+  for (const row of rows) { for (const ox of row) sq(hx + ox * s, zc, s * 0.92); zc += s; }
+}
 
 // ---- Ateş böcekleri (gece) --------------------------------------------
 let firefliesMat = null;
@@ -1374,7 +1441,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v45 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v46 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1808,6 +1875,7 @@ function update(dt) {
       if (occ) { occ.g.position.set(swing.x, swing.gy + yOff + 0.05, swing.z + zOff); occ.g.rotation.set(ang * 0.5, 0, 0); }
     }
   }
+  if (seesaw) seesaw.rotation.z = 0.16 * Math.sin(elapsed * 1.3);   // tahterevalli sallanır
 
   // yönelme (yumuşak)
   let d = facing - player.rotation.y;
@@ -1935,6 +2003,16 @@ function update(dt) {
         p.setY(i, y);
       }
       p.needsUpdate = true;
+    } else if (wf.type === 'splash') {
+      const arr = wf.geo.attributes.position.array, v = wf.vel;
+      for (let i = 0; i < v.length / 3; i++) {
+        v[i * 3 + 1] -= 9 * dt;
+        arr[i * 3] += v[i * 3] * dt;
+        arr[i * 3 + 1] += v[i * 3 + 1] * dt;
+        arr[i * 3 + 2] += v[i * 3 + 2] * dt;
+        if (arr[i * 3 + 1] <= wf.base + 0.1) wf.reset(i);
+      }
+      wf.geo.attributes.position.needsUpdate = true;
     }
   }
 
