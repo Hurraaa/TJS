@@ -270,6 +270,21 @@ if (todSliderEl) {
 }
 setTimeOfDay(todTime);
 
+// Bilgi (i) butonu → soldaki açıklama pop-up'ını aç/kapa
+{
+  const infoBtn = document.getElementById('infoBtn');
+  const hud = document.getElementById('hud');
+  if (infoBtn && hud) {
+    const toggle = (e) => {
+      hud.classList.toggle('open');
+      infoBtn.classList.toggle('active', hud.classList.contains('open'));
+      if (e) e.preventDefault();
+    };
+    infoBtn.addEventListener('click', toggle);
+    infoBtn.addEventListener('touchstart', toggle, { passive: false });
+  }
+}
+
 // ---- Kozmik & atmosferik dokunuşlar -----------------------------------
 const auroraMats = [];
 let rainbowMat = null, petalsMat = null;
@@ -884,39 +899,26 @@ let swing = null;
   });
 }
 
-// ---- Futbol sahası (basit gol) ----------------------------------------
-const FIELD = { x: 5, z: -46, halfLen: 12, w: 5, h: 2.4 };
+// ---- Gol noktaları (otantik: iki ahşap kalas) -------------------------
+const FIELD = { x: 5, z: -46, halfLen: 12, w: 5 };
 const goals = [];
 let score = 0, goalCd = 0;
 const goalMsgEl = document.getElementById('goalMsg');
-function makeGoal(gx, gz, outDir) {
+function makeGoal(gx, gz) {
   const g = new THREE.Group();
   g.position.set(gx, heightAt(gx, gz), gz); scene.add(g);
-  const postMat = new THREE.MeshToonMaterial({ color: '#ffffff', gradientMap: ramp });
-  const w = FIELD.w, h = FIELD.h;
+  const w = FIELD.w;
   for (const sx of [-w / 2, w / 2]) {
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, h, 8), postMat);
-    post.position.set(sx, h / 2, 0); post.castShadow = true; addOutline(post, 0.03); g.add(post);
-    colliders.push({ x: gx + sx, z: gz, r: 0.25 });
+    const plank = new THREE.Mesh(roughen(new THREE.BoxGeometry(0.2, 1.7, 0.42), 0.03), toon('#8a5a36'));
+    plank.position.set(sx, 0.82, 0);
+    plank.rotation.z = (sx < 0 ? 1 : -1) * 0.06;     // hafif yana eğik (otantik)
+    plank.castShadow = true; plank.receiveShadow = true; addOutline(plank, 0.03); g.add(plank);
+    colliders.push({ x: gx + sx, z: gz, r: 0.28 });
   }
-  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, w + 0.2, 8), postMat);
-  bar.rotation.z = Math.PI / 2; bar.position.set(0, h, 0); addOutline(bar, 0.03); g.add(bar);
-  const depth = 1.5;
-  const net = new THREE.Mesh(new THREE.BoxGeometry(w, h, depth, 8, 5, 3),
-    new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.35 }));
-  net.position.set(0, h / 2, outDir * depth / 2); g.add(net);
-  goals.push({ x: gx, z: gz, w, h });
+  goals.push({ x: gx, z: gz, w, h: 2.6 });
 }
-makeGoal(FIELD.x, FIELD.z - FIELD.halfLen, -1);
-makeGoal(FIELD.x, FIELD.z + FIELD.halfLen, +1);
-// saha çizgileri
-{
-  const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3, depthWrite: false });
-  const circle = new THREE.Mesh(new THREE.RingGeometry(2.3, 2.6, 40), lineMat);
-  circle.rotation.x = -Math.PI / 2; circle.position.set(FIELD.x, heightAt(FIELD.x, FIELD.z) + 0.07, FIELD.z); scene.add(circle);
-  const mid = new THREE.Mesh(new THREE.PlaneGeometry(FIELD.w * 1.8, 0.16), lineMat);
-  mid.rotation.x = -Math.PI / 2; mid.position.set(FIELD.x, heightAt(FIELD.x, FIELD.z) + 0.07, FIELD.z); scene.add(mid);
-}
+makeGoal(FIELD.x, FIELD.z - FIELD.halfLen);
+makeGoal(FIELD.x, FIELD.z + FIELD.halfLen);
 // topu sahanın ortasına al
 if (ball) ball.position.set(FIELD.x, heightAt(FIELD.x, FIELD.z) + 0.5, FIELD.z);
 
@@ -1321,7 +1323,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v41 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v42 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
