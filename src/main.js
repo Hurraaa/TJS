@@ -218,6 +218,7 @@ const _sunDay = new THREE.Color('#fff3da'), _sunWarm = new THREE.Color('#ff8a3d'
 const _hemiDay = new THREE.Color('#ffe9c8'), _hemiNight = new THREE.Color('#36436e');
 const _MOON = new THREE.Vector3(), _tmpCol = new THREE.Color();
 let todIconEl = null;
+let nightAmount = 0;                            // 0 gündüz .. 1 gece (ateş böcekleri için)
 function setTimeOfDay(t) {
   t = THREE.MathUtils.clamp(t, 0, 1);
   const elevationDeg = -16 + t * 76;            // güneş yüksekliği
@@ -225,6 +226,7 @@ function setTimeOfDay(t) {
   SUN_DIR.setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - elevationDeg), THREE.MathUtils.degToRad(azimuth));
   const day = THREE.MathUtils.clamp((elevationDeg + 4) / 12, 0, 1);   // 0 gece, 1 gündüz
   const night = 1 - day;
+  nightAmount = night;
   const warm = THREE.MathUtils.clamp(1 - Math.abs(elevationDeg - 8) / 26, 0, 1) * day;
 
   const u = sky.material.uniforms;
@@ -525,6 +527,111 @@ for (let i = 0; i < 16; i++) {
   });
 }
 
+// ---- Kamp ateşi -------------------------------------------------------
+const fireParts = [];
+function makeCampfire(fx, fz) {
+  const fy = heightAt(fx, fz);
+  const g = new THREE.Group();
+  g.position.set(fx, fy, fz);
+  scene.add(g);
+
+  // Taş halkası
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const s = new THREE.Mesh(roughen(new THREE.DodecahedronGeometry(0.32, 0), 0.06), toon('#9aa0a6'));
+    s.position.set(Math.cos(a) * 1.1, 0.12, Math.sin(a) * 1.1);
+    s.rotation.set(Math.random(), Math.random(), Math.random());
+    s.castShadow = true; s.receiveShadow = true; g.add(s);
+  }
+  // Odunlar (çapraz)
+  for (let i = 0; i < 4; i++) {
+    const log = new THREE.Mesh(roughen(new THREE.CylinderGeometry(0.12, 0.14, 1.5, 6), 0.04), toon('#6b4a30'));
+    log.position.y = 0.25; log.rotation.z = Math.PI / 2.3;
+    log.rotation.y = (i / 4) * Math.PI; log.castShadow = true; addOutline(log, 0.03); g.add(log);
+  }
+
+  // Alev (animasyonlu shader konileri)
+  const flameMat = (c1, c2, sz) => new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    uniforms: { time: { value: Math.random() * 10 }, c1: { value: new THREE.Color(c1) }, c2: { value: new THREE.Color(c2) } },
+    vertexShader: `varying vec2 vUv; uniform float time;
+      void main(){ vUv = uv; vec3 p = position; float k = uv.y;
+        p.x += sin(time*9.0 + p.y*5.0) * 0.10 * k;
+        p.z += cos(time*8.0 + p.y*4.0) * 0.10 * k;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0); }`,
+    fragmentShader: `varying vec2 vUv; uniform float time; uniform vec3 c1; uniform vec3 c2;
+      void main(){
+        float flick = 0.82 + 0.18 * sin(time * 22.0);
+        float body = smoothstep(1.0, 0.15, vUv.y) * flick;
+        float core = smoothstep(0.5, 0.0, abs(vUv.x - 0.5));
+        vec3 col = mix(c1, c2, vUv.y);
+        gl_FragColor = vec4(col, body * (0.5 + 0.5 * core)); }`,
+  });
+  const flameOuter = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.7, 10, 1, true), flameMat('#ff5a1e', '#ffd23c'));
+  flameOuter.position.y = 0.95; g.add(flameOuter);
+  const flameInner = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1.2, 8, 1, true), flameMat('#ffd23c', '#fff3b0'));
+  flameInner.position.y = 0.8; g.add(flameInner);
+
+  // Ateş ışığı (titrer)
+  const light = new THREE.PointLight('#ff8a2e', 6, 26, 2);
+  light.position.set(0, 1.2, 0); g.add(light);
+
+  // Kıvılcımlar (yükselen)
+  const N = 40, pos = new Float32Array(N * 3), seed = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    pos[i * 3] = (Math.random() - 0.5) * 0.5; pos[i * 3 + 1] = Math.random() * 2; pos[i * 3 + 2] = (Math.random() - 0.5) * 0.5;
+    seed[i] = Math.random();
+  }
+  const emGeo = new THREE.BufferGeometry();
+  emGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const embers = new THREE.Points(emGeo, new THREE.PointsMaterial({
+    color: '#ffb24a', size: 0.12, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+  }));
+  g.add(embers);
+
+  colliders.push({ x: fx, z: fz, r: 1.5 });
+  fireParts.push({ flames: [flameOuter.material, flameInner.material], light, embers: emGeo });
+}
+makeCampfire(12, 10);
+
+// ---- Ateş böcekleri (gece) --------------------------------------------
+let firefliesMat = null;
+{
+  const N = 90;
+  const pos = new Float32Array(N * 3), seed = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const x = (Math.random() - 0.5) * (WORLD - 70);
+    const z = (Math.random() - 0.5) * (WORLD - 70);
+    pos[i * 3] = x; pos[i * 3 + 1] = heightAt(x, z) + 1.2; pos[i * 3 + 2] = z;
+    seed[i] = Math.random();
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
+  firefliesMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    uniforms: { time: { value: 0 }, night: { value: 0 } },
+    vertexShader: `attribute float aSeed; uniform float time; varying float vBlink;
+      void main(){
+        vec3 p = position;
+        p.x += sin(time * 0.5 + aSeed * 6.28) * 2.6;
+        p.y += sin(time * 0.8 + aSeed * 10.0) * 0.8;
+        p.z += cos(time * 0.45 + aSeed * 7.0) * 2.6;
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        gl_Position = projectionMatrix * mv;
+        gl_PointSize = 220.0 / max(-mv.z, 1.0);
+        vBlink = pow(0.5 + 0.5 * sin(time * 3.0 + aSeed * 25.0), 2.0);
+      }`,
+    fragmentShader: `uniform float night; varying float vBlink;
+      void main(){
+        float d = length(gl_PointCoord - 0.5);
+        float a = smoothstep(0.5, 0.0, d) * vBlink * night;
+        gl_FragColor = vec4(vec3(0.85, 1.0, 0.45), a);
+      }`,
+  });
+  scene.add(new THREE.Points(geo, firefliesMat));
+}
+
 // ---- Ağaçlar (low-poly, Ghibli) ---------------------------------------
 function makeRoundTree() {
   const g = new THREE.Group();
@@ -794,7 +901,7 @@ function emote(name) {
   current = a;
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v21 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v22 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1156,6 +1263,26 @@ function update(dt) {
     const flap = 0.15 + (Math.sin(elapsed * b.flapSpeed + b.flapPhase) * 0.5 + 0.5) * 1.15;
     b.g.userData.wl.rotation.y = flap;
     b.g.userData.wr.rotation.y = -flap;
+  }
+
+  // Kamp ateşi: alev, titreyen ışık, yükselen kıvılcımlar
+  for (const f of fireParts) {
+    for (const m of f.flames) m.uniforms.time.value += dt;
+    f.light.intensity = 5 + Math.sin(elapsed * 17) * 1.2 + Math.sin(elapsed * 31) * 0.6;
+    const p = f.embers.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      let y = p.getY(i) + dt * (1.2 + (i % 5) * 0.15);
+      let x = p.getX(i) + Math.sin(elapsed * 3 + i) * dt * 0.3;
+      if (y > 3) { y = 0.2; x = (Math.random() - 0.5) * 0.5; }
+      p.setXYZ(i, x, y, p.getZ(i));
+    }
+    p.needsUpdate = true;
+  }
+
+  // Ateş böcekleri (gece görünür)
+  if (firefliesMat) {
+    firefliesMat.uniforms.time.value += dt;
+    firefliesMat.uniforms.night.value = nightAmount;
   }
 
   clouds.rotation.y += dt * 0.005;
