@@ -23,7 +23,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+renderer.toneMappingExposure = 0.82;
 document.getElementById('app').appendChild(renderer.domElement);
 
 // ---- Scene & atmosphere -----------------------------------------------
@@ -233,12 +233,12 @@ function setTimeOfDay(t) {
 
   const u = sky.material.uniforms;
   u.sunPosition.value.copy(SUN_DIR);
-  u.rayleigh.value = 1.0 + warm * 2.4;
-  u.turbidity.value = 3 + warm * 7;
-  u.mieCoefficient.value = 0.005 + day * 0.004;
+  u.rayleigh.value = 0.9 + warm * 2.2;
+  u.turbidity.value = 3 + warm * 6;
+  u.mieCoefficient.value = 0.003 + day * 0.0015;     // daha az kör edici güneş halesi
 
   sun.color.copy(_sunDay).lerp(_sunWarm, warm);
-  sun.intensity = 2.4 * day;
+  sun.intensity = 1.9 * day;
 
   // Ay: güneşin tersinde, ufkun üstünde
   _MOON.copy(SUN_DIR).negate();
@@ -305,7 +305,10 @@ for (let i = 0; i < 3; i++) {
       void main(){
         float v = 0.5 + 0.5 * sin(vUv.x * 22.0 + time * 1.4);
         float curtain = pow(vUv.y, 1.4);                 // üstte yoğun, altta solar
-        float a = curtain * (0.30 + 0.45 * v) * night;
+        // kenarlardan yumuşak sönüm (keskin bitiş yok)
+        float edge = smoothstep(0.0, 0.22, vUv.x) * smoothstep(1.0, 0.78, vUv.x);
+        edge *= smoothstep(1.0, 0.85, vUv.y);            // tepe de yumuşasın
+        float a = curtain * (0.30 + 0.45 * v) * night * edge;
         vec3 col = mix(c1, c2, clamp(vUv.x + 0.25 * sin(time * 0.5), 0.0, 1.0));
         gl_FragColor = vec4(col, a * 0.6); }`,
   });
@@ -325,7 +328,10 @@ for (let i = 0; i < 3; i++) {
     const r = Math.hypot(p.getX(i), p.getY(i));
     const t = THREE.MathUtils.clamp((r - inner) / (outer - inner), 0, 1);
     c.setHSL(0.0 + t * 0.78, 0.85, 0.6);              // kırmızı(dış) → mor(iç)
-    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+    // uçlar (ufka inen kısımlar) yumuşakça sönsün — keskin kesilme olmasın
+    const theta = Math.atan2(p.getY(i), p.getX(i));   // 0..PI
+    const fade = Math.pow(Math.sin(theta), 0.7);
+    col[i * 3] = c.r * fade; col[i * 3 + 1] = c.g * fade; col[i * 3 + 2] = c.b * fade;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
   rainbowMat = new THREE.MeshBasicMaterial({
@@ -1115,7 +1121,7 @@ function emote(name) {
   current = a;
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v31 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v32 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1642,7 +1648,7 @@ function update(dt) {
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(
-  new THREE.Vector2(window.innerWidth, window.innerHeight), 0.28, 0.6, 0.85); // güç, yarıçap, eşik
+  new THREE.Vector2(window.innerWidth, window.innerHeight), 0.18, 0.6, 0.9); // güç, yarıçap, eşik
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
