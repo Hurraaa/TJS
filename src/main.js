@@ -381,25 +381,53 @@ for (let i = 0; i < 3; i++) {
 }
 
 // ---- Dağlar -----------------------------------------------------------
-// Şelalenin arkasında, suyun indiği büyük bir dağ kütlesi.
+// Kar çizgili, kayalık, doğal siluetli zirveler (vertex renkli toon).
+const _snowCol = new THREE.Color('#eef4fb');
+function coloredPeak(r, h, rockHex, snowLine, outline) {
+  const geo = roughen(new THREE.ConeGeometry(r, h, 11, 7), r * 0.07);
+  const pos = geo.attributes.position;
+  const col = new Float32Array(pos.count * 3);
+  const rock = new THREE.Color(rockHex), tmp = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    const yy = (pos.getY(i) + h / 2) / h;                 // 0 taban .. 1 tepe
+    let s = THREE.MathUtils.smoothstep(yy, snowLine, snowLine + 0.18);
+    s *= 0.7 + 0.3 * Math.random();                       // kar kenarı düzensiz
+    tmp.copy(rock).lerp(_snowCol, THREE.MathUtils.clamp(s, 0, 1));
+    const v = 0.9 + Math.random() * 0.2;                  // kaya damar varyasyonu
+    col[i * 3] = tmp.r * v; col[i * 3 + 1] = tmp.g * v; col[i * 3 + 2] = tmp.b * v;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geo.computeVertexNormals();
+  const m = new THREE.Mesh(geo, new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: ramp }));
+  m.castShadow = true; m.receiveShadow = true; addOutline(m, outline);
+  return m;
+}
 function addMountain(mx, mz, h, baseR, color) {
   const g = new THREE.Group();
-  const main = new THREE.Mesh(roughen(new THREE.ConeGeometry(baseR, h, 8), baseR * 0.05), toon(color));
-  main.position.y = h / 2; main.castShadow = true; main.receiveShadow = true; addOutline(main, 0.5); g.add(main);
-  // yan zirveler
-  for (let i = 0; i < 3; i++) {
-    const r = baseR * (0.55 - i * 0.12), hh = h * (0.7 - i * 0.15);
-    const c = new THREE.Mesh(roughen(new THREE.ConeGeometry(r, hh, 7), r * 0.05), toon(color));
-    const a = Math.random() * Math.PI * 2;
-    c.position.set(Math.cos(a) * baseR * 0.5, hh / 2, Math.sin(a) * baseR * 0.5);
-    c.castShadow = true; addOutline(c, 0.4); g.add(c);
+  const main = coloredPeak(baseR, h, color, 0.62, 0.5);
+  main.position.y = h / 2; g.add(main);
+  // doğal siluet için yan sırtlar (farklı yön/yükseklik)
+  const ridges = 3;
+  for (let i = 0; i < ridges; i++) {
+    const r = baseR * (0.6 - i * 0.13), hh = h * (0.72 - i * 0.16);
+    const c = coloredPeak(r, hh, color, 0.66, 0.35);
+    const a = (i / ridges) * Math.PI * 2 + Math.random();
+    const dist = baseR * (0.4 + Math.random() * 0.25);
+    c.position.set(Math.cos(a) * dist, hh / 2 - h * 0.04, Math.sin(a) * dist);
+    g.add(c);
   }
-  // kar tepesi
-  const snow = new THREE.Mesh(roughen(new THREE.ConeGeometry(baseR * 0.36, h * 0.3, 8), baseR * 0.03), toon('#eef4fb'));
-  snow.position.y = h - h * 0.15; addOutline(snow, 0.2); g.add(snow);
+  // etekte birkaç kaya
+  for (let i = 0; i < 5; i++) {
+    const rr = baseR * (0.05 + Math.random() * 0.05);
+    const rock = new THREE.Mesh(roughen(new THREE.DodecahedronGeometry(rr, 0), rr * 0.2), toon(color));
+    const a = Math.random() * Math.PI * 2, dist = baseR * (0.8 + Math.random() * 0.15);
+    rock.position.set(Math.cos(a) * dist, rr * 0.5, Math.sin(a) * dist);
+    rock.rotation.set(Math.random(), Math.random(), Math.random());
+    rock.castShadow = true; addOutline(rock, 0.1); g.add(rock);
+  }
   g.position.set(mx, heightAt(mx, mz) - 1, mz);
   scene.add(g);
-  colliders.push({ x: mx, z: mz, r: baseR * 0.92 });   // taban görseline yakın → içine girilmez
+  colliders.push({ x: mx, z: mz, r: baseR * 0.9 });
   return g;
 }
 addMountain(-104, 40, 66, 44, '#7c8a86');     // şelale dağı (ana)
@@ -638,6 +666,23 @@ for (let i = 0; i < 16; i++) {
   });
 }
 
+// ---- Oturak: kütük bank (yatay kütük + iki kütük ayak) ----------------
+function makeLogBench(len) {
+  const g = new THREE.Group();
+  const seat = new THREE.Mesh(roughen(new THREE.CylinderGeometry(0.21, 0.21, len, 9), 0.02), toon('#9a6a3e'));
+  seat.rotation.z = Math.PI / 2; seat.position.y = 0.42; seat.castShadow = true; seat.receiveShadow = true; addOutline(seat, 0.03); g.add(seat);
+  // ağaç halkaları hissi için uç kapakları
+  for (const ex of [-len / 2, len / 2]) {
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.215, 0.215, 0.04, 9), toon('#caa06a'));
+    cap.rotation.z = Math.PI / 2; cap.position.set(ex, 0.42, 0); g.add(cap);
+  }
+  for (const sx of [-len * 0.34, len * 0.34]) {
+    const sup = new THREE.Mesh(roughen(new THREE.CylinderGeometry(0.13, 0.16, 0.42, 7), 0.02), toon('#6b4a30'));
+    sup.position.set(sx, 0.21, 0); sup.castShadow = true; addOutline(sup, 0.025); g.add(sup);
+  }
+  return g;
+}
+
 // ---- Kamp ateşi -------------------------------------------------------
 const fireParts = [];
 function makeCampfire(fx, fz) {
@@ -647,18 +692,26 @@ function makeCampfire(fx, fz) {
   scene.add(g);
 
   // Taş halkası
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2;
-    const s = new THREE.Mesh(roughen(new THREE.DodecahedronGeometry(0.32, 0), 0.06), toon('#9aa0a6'));
-    s.position.set(Math.cos(a) * 1.1, 0.12, Math.sin(a) * 1.1);
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 9) * Math.PI * 2;
+    const s = new THREE.Mesh(roughen(new THREE.DodecahedronGeometry(0.3, 0), 0.06), toon('#9aa0a6'));
+    s.position.set(Math.cos(a) * 1.1, 0.1, Math.sin(a) * 1.1);
     s.rotation.set(Math.random(), Math.random(), Math.random());
-    s.castShadow = true; s.receiveShadow = true; g.add(s);
+    s.scale.y = 0.8; s.castShadow = true; s.receiveShadow = true; addOutline(s, 0.03); g.add(s);
   }
-  // Odunlar (çapraz)
+  // Odunlar (çapraz, ateş yakıtı)
   for (let i = 0; i < 4; i++) {
     const log = new THREE.Mesh(roughen(new THREE.CylinderGeometry(0.12, 0.14, 1.5, 6), 0.04), toon('#6b4a30'));
     log.position.y = 0.25; log.rotation.z = Math.PI / 2.3;
     log.rotation.y = (i / 4) * Math.PI; log.castShadow = true; addOutline(log, 0.03); g.add(log);
+  }
+  // Ateş çevresinde kütük oturaklar (ateşe dönük)
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2 + 0.5;
+    const b = makeLogBench(2.0);
+    b.position.set(Math.cos(a) * 2.7, 0, Math.sin(a) * 2.7);
+    b.rotation.y = -a;
+    g.add(b);
   }
 
   // Alev (animasyonlu shader konileri)
@@ -711,24 +764,45 @@ const CAMPFIRE = { x: 12, z: 10 };
 makeCampfire(CAMPFIRE.x, CAMPFIRE.z);
 
 // ---- Manzara noktası (göl/şelale/dağ manzarasına bakan ahşap teras) ----
+// Manzara -x yönünde; oturan -x'e bakar, arkasında bank, önünde korkuluk.
 const VISTA = { x: -10, z: 40 };
 {
   const vy = heightAt(VISTA.x, VISTA.z);
   const g = new THREE.Group();
   g.position.set(VISTA.x, vy, VISTA.z);
+  g.rotation.y = -Math.PI / 2;                 // grup +z'si manzaraya (-x) baksın
   scene.add(g);
-  // Ahşap teras (alçak, yere basık → yere oturma pozu uyumlu)
-  const deck = new THREE.Mesh(roughen(new THREE.BoxGeometry(3.4, 0.22, 2.8), 0.02), toon('#9c7a4e'));
-  deck.position.y = 0.05; deck.receiveShadow = true; deck.castShadow = true; addOutline(deck, 0.03); g.add(deck);
-  // Yan oturma kütüğü
-  const log = new THREE.Mesh(roughen(new THREE.CylinderGeometry(0.32, 0.34, 2.2, 8), 0.03), toon('#7a5236'));
-  log.rotation.z = Math.PI / 2; log.position.set(0.2, 0.45, -1.05); log.castShadow = true; addOutline(log, 0.03); g.add(log);
-  // Fener (gece parlar)
-  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 1.6, 6), toon('#4a3a2a'));
-  post.position.set(-1.5, 0.85, -1.1); post.castShadow = true; g.add(post);
+
+  // Ahşap teras (planklı görünüm)
+  const deck = new THREE.Mesh(roughen(new THREE.BoxGeometry(4.0, 0.24, 3.2, 8, 1, 1), 0.02), toon('#9c7a4e'));
+  deck.position.y = 0.06; deck.receiveShadow = true; deck.castShadow = true; addOutline(deck, 0.03); g.add(deck);
+  // plank çizgileri
+  for (let i = -2; i <= 2; i++) {
+    const pl = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.26, 3.2), toon('#7a5d38'));
+    pl.position.set(i * 0.78, 0.07, 0); g.add(pl);
+  }
+
+  // Arkada (manzaraya sırtı dönük) kütük bank — oturan sırtını dayar
+  const bench = makeLogBench(2.6);
+  bench.position.set(0, 0, 1.15); bench.rotation.y = 0; g.add(bench);
+
+  // Önde alçak ahşap korkuluk (manzara tarafı, +z)
+  const railMat = toon('#7a5236');
+  for (const px of [-1.7, 0, 1.7]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.95, 6), railMat);
+    post.position.set(px, 0.47, -1.5); post.castShadow = true; addOutline(post, 0.025); g.add(post);
+  }
+  const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 3.6, 7), railMat);
+  rail.rotation.z = Math.PI / 2; rail.position.set(0, 0.9, -1.5); addOutline(rail, 0.025); g.add(rail);
+
+  // İki fener (gece parlar)
   const lampMat = new THREE.MeshToonMaterial({ color: '#5a4326', emissive: new THREE.Color('#ffcf6b'), emissiveIntensity: 0, gradientMap: ramp });
-  const lamp = new THREE.Mesh(new THREE.IcosahedronGeometry(0.22, 0), lampMat);
-  lamp.position.set(-1.5, 1.72, -1.1); g.add(lamp);
+  for (const lx of [-1.85, 1.85]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 1.7, 6), toon('#4a3a2a'));
+    post.position.set(lx, 0.9, 1.45); post.castShadow = true; g.add(post);
+    const lamp = new THREE.Mesh(new THREE.IcosahedronGeometry(0.2, 0), lampMat);
+    lamp.position.set(lx, 1.85, 1.45); g.add(lamp);
+  }
   glowMats.push({ mat: lampMat, base: 2.2, phase: 0 });
 }
 
@@ -1131,7 +1205,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v35 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v36 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
