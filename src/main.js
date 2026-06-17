@@ -126,6 +126,7 @@ function roughen(geo, amount = 0.12) {
 const WORLD = 260;
 const colliders = [];                          // {x, z, r} — katı engeller (çarpışma)
 const glowMats = [];                           // gece parlayan malzemeler {mat, base, phase}
+const lilies = [];                             // göl nilüferleri (hafif salınır)
 function heightAt(x, z) {
   return Math.sin(x * 0.045) * 2.4 + Math.cos(z * 0.05) * 2.2
        + Math.sin((x + z) * 0.018) * 3.0
@@ -201,6 +202,37 @@ let water = null;
   water.rotation.x = -Math.PI / 2;
   water.position.set(LAKE.x, heightAt(LAKE.x, LAKE.z) + 0.15, LAKE.z);
   scene.add(water);
+}
+
+// Nilüferler (göl üzerinde, çiçekli, hafif salınan)
+{
+  const wy = heightAt(LAKE.x, LAKE.z) + 0.18;
+  const padMat = toon('#3f8f5a');
+  for (let i = 0; i < 14; i++) {
+    const a = Math.random() * Math.PI * 2, r = 2 + Math.random() * (LAKE.r - 4);
+    const x = LAKE.x + Math.cos(a) * r, z = LAKE.z + Math.sin(a) * r;
+    if (Math.hypot(x - (LAKE.x - LAKE.r + 6), z - LAKE.z) < 8) continue;  // şelale dibi boş
+    const g = new THREE.Group();
+    const pr = 0.55 + Math.random() * 0.7;
+    const pad = new THREE.Mesh(new THREE.CircleGeometry(pr, 16, 0.35, Math.PI * 2 - 0.7), padMat); // çentikli yaprak
+    pad.rotation.x = -Math.PI / 2; pad.rotation.z = Math.random() * Math.PI * 2;
+    pad.receiveShadow = true; g.add(pad);
+    if (Math.random() < 0.5) {                       // bazılarında çiçek
+      const fcol = Math.random() < 0.5 ? '#ffd6e8' : '#fff6f0';
+      for (let p = 0; p < 6; p++) {
+        const petal = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 5), toon(fcol));
+        petal.scale.set(0.9, 0.5, 1.7);
+        const pa = (p / 6) * Math.PI * 2;
+        petal.position.set(Math.cos(pa) * 0.16, 0.13, Math.sin(pa) * 0.16);
+        petal.rotation.y = -pa; g.add(petal);
+      }
+      const cen = new THREE.Mesh(new THREE.SphereGeometry(0.1, 7, 6), toon('#ffd24a'));
+      cen.position.y = 0.15; cen.scale.y = 0.6; g.add(cen);
+    }
+    g.position.set(x, wy, z);
+    scene.add(g);
+    lilies.push({ g, phase: Math.random() * 6.28, baseY: wy });
+  }
 }
 
 // ---- Gece öğeleri: yıldızlar + ay + ay ışığı --------------------------
@@ -1512,7 +1544,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v56 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v57 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -2148,6 +2180,12 @@ function update(dt) {
 
   // Su dalgaları
   if (water) water.material.uniforms['time'].value += dt;
+  // Nilüferler hafifçe salınır
+  for (let i = 0; i < lilies.length; i++) {
+    const L = lilies[i];
+    L.g.position.y = L.baseY + Math.sin(elapsed * 1.2 + L.phase) * 0.04;
+    L.g.rotation.z = Math.sin(elapsed * 0.6 + L.phase) * 0.05;
+  }
 
   // Şelale
   for (const wf of waterfallParts) {
