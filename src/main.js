@@ -919,6 +919,35 @@ function makeGoal(gx, gz) {
 }
 makeGoal(FIELD.x, FIELD.z - FIELD.halfLen);
 makeGoal(FIELD.x, FIELD.z + FIELD.halfLen);
+
+// Toprağa çizilmiş saha çizgileri (araziye uyan, aşınmış kesik çizgiler)
+function groundLine(x1, z1, x2, z2) {
+  const dx = x2 - x1, dz = z2 - z1, L = Math.hypot(dx, dz);
+  const n = Math.max(1, Math.round(L / 0.55));
+  const ang = Math.atan2(dx, dz);
+  const geo = new THREE.PlaneGeometry(0.16, 0.42);
+  const mat = new THREE.MeshToonMaterial({ color: '#d8c6a0', gradientMap: ramp, transparent: true, opacity: 0.5, depthWrite: false });
+  const mesh = new THREE.InstancedMesh(geo, mat, n + 1);
+  mesh.receiveShadow = false;
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1), e = new THREE.Euler();
+  for (let i = 0; i <= n; i++) {
+    const t = i / n, x = x1 + dx * t, z = z1 + dz * t;
+    e.set(-Math.PI / 2, ang, 0);
+    q.setFromEuler(e);
+    m.compose(new THREE.Vector3(x, heightAt(x, z) + 0.06, z), q, s);
+    mesh.setMatrixAt(i, m);
+  }
+  mesh.instanceMatrix.needsUpdate = true;
+  scene.add(mesh);
+}
+{
+  const hw = 6, z0 = FIELD.z - FIELD.halfLen, z1 = FIELD.z + FIELD.halfLen, xl = FIELD.x - hw, xr = FIELD.x + hw;
+  groundLine(xl, z0, xr, z0);          // kale çizgisi 1
+  groundLine(xl, z1, xr, z1);          // kale çizgisi 2
+  groundLine(xl, z0, xl, z1);          // yan çizgi
+  groundLine(xr, z0, xr, z1);          // yan çizgi
+  groundLine(xl, FIELD.z, xr, FIELD.z); // orta çizgi
+}
 // topu sahanın ortasına al
 if (ball) ball.position.set(FIELD.x, heightAt(FIELD.x, FIELD.z) + 0.5, FIELD.z);
 
@@ -1323,7 +1352,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v42 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v43 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
