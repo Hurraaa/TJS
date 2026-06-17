@@ -270,6 +270,109 @@ setTimeOfDay(0.62);                            // varsayılan: gündüz
   setTimeOfDay(0.62);                           // ikonu da güncelle
 }
 
+// ---- Kozmik & atmosferik dokunuşlar -----------------------------------
+const auroraMats = [];
+let rainbowMat = null, petalsMat = null;
+
+// Halkalı gezegen (ufukta, uzakta — gündüz/gece soft durur)
+{
+  const planet = new THREE.Group();
+  planet.add(new THREE.Mesh(new THREE.SphereGeometry(58, 32, 24),
+    new THREE.MeshBasicMaterial({ color: '#d99a6f', fog: false })));
+  const ring = new THREE.Mesh(new THREE.RingGeometry(76, 116, 64),
+    new THREE.MeshBasicMaterial({ color: '#e9c79c', side: THREE.DoubleSide, transparent: true, opacity: 0.55, fog: false, depthWrite: false }));
+  ring.rotation.x = Math.PI * 0.42; ring.rotation.y = 0.3;
+  planet.add(ring);
+  planet.position.set(-380, 150, -540);
+  scene.add(planet);
+}
+
+// Gece aurora perdeleri (kuzey ışıkları)
+for (let i = 0; i < 3; i++) {
+  const mat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    uniforms: {
+      time: { value: 0 }, night: { value: 0 }, off: { value: i * 1.7 },
+      c1: { value: new THREE.Color('#54ffb0') }, c2: { value: new THREE.Color('#6a8cff') },
+    },
+    vertexShader: `varying vec2 vUv; uniform float time; uniform float off;
+      void main(){ vUv = uv; vec3 p = position;
+        p.z += sin(p.x * 0.018 + time * 0.5 + off) * 22.0;
+        p.y += sin(p.x * 0.05 + time * 0.7 + off) * 9.0;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0); }`,
+    fragmentShader: `varying vec2 vUv; uniform float time; uniform float night; uniform vec3 c1; uniform vec3 c2;
+      void main(){
+        float v = 0.5 + 0.5 * sin(vUv.x * 22.0 + time * 1.4);
+        float curtain = pow(vUv.y, 1.4);                 // üstte yoğun, altta solar
+        float a = curtain * (0.30 + 0.45 * v) * night;
+        vec3 col = mix(c1, c2, clamp(vUv.x + 0.25 * sin(time * 0.5), 0.0, 1.0));
+        gl_FragColor = vec4(col, a * 0.6); }`,
+  });
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(420, 110, 48, 1), mat);
+  m.position.set(-30, 165, -320 - i * 36);
+  m.rotation.x = -0.18;
+  scene.add(m);
+  auroraMats.push(mat);
+}
+
+// Gökkuşağı (gündüz, uzakta, yumuşak)
+{
+  const inner = 175, outer = 205;
+  const geo = new THREE.RingGeometry(inner, outer, 120, 1, 0, Math.PI);
+  const p = geo.attributes.position, col = new Float32Array(p.count * 3), c = new THREE.Color();
+  for (let i = 0; i < p.count; i++) {
+    const r = Math.hypot(p.getX(i), p.getY(i));
+    const t = THREE.MathUtils.clamp((r - inner) / (outer - inner), 0, 1);
+    c.setHSL(0.0 + t * 0.78, 0.85, 0.6);              // kırmızı(dış) → mor(iç)
+    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  rainbowMat = new THREE.MeshBasicMaterial({
+    vertexColors: true, transparent: true, opacity: 0, side: THREE.DoubleSide,
+    depthWrite: false, fog: false, blending: THREE.AdditiveBlending,
+  });
+  const rainbow = new THREE.Mesh(geo, rainbowMat);
+  rainbow.position.set(150, -20, -380);
+  scene.add(rainbow);
+}
+
+// Havada uçuşan yapraklar / polen (gündüz)
+{
+  const N = 80, pos = new Float32Array(N * 3), seed = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    pos[i * 3] = (Math.random() - 0.5) * (WORLD - 40);
+    pos[i * 3 + 1] = 2 + Math.random() * 13;
+    pos[i * 3 + 2] = (Math.random() - 0.5) * (WORLD - 40);
+    seed[i] = Math.random();
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
+  petalsMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false,
+    uniforms: { time: { value: 0 }, day: { value: 1 } },
+    vertexShader: `attribute float aSeed; uniform float time; varying float vR;
+      void main(){
+        vec3 p = position;
+        p.x += sin(time * 0.4 + aSeed * 6.28) * 3.0;
+        p.y += sin(time * 0.6 + aSeed * 9.0) * 1.2;
+        p.z += cos(time * 0.35 + aSeed * 7.0) * 3.0;
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        gl_Position = projectionMatrix * mv;
+        gl_PointSize = 90.0 / max(-mv.z, 1.0);
+        vR = aSeed;
+      }`,
+    fragmentShader: `uniform float day; varying float vR;
+      void main(){
+        float d = length(gl_PointCoord - 0.5);
+        float a = smoothstep(0.5, 0.1, d) * day * 0.7;
+        vec3 col = mix(vec3(1.0, 0.85, 0.6), vec3(1.0, 0.7, 0.85), vR);
+        gl_FragColor = vec4(col, a);
+      }`,
+  });
+  scene.add(new THREE.Points(geo, petalsMat));
+}
+
 // ---- Dağlar -----------------------------------------------------------
 // Şelalenin arkasında, suyun indiği büyük bir dağ kütlesi.
 function addMountain(mx, mz, h, baseR, color) {
@@ -1010,7 +1113,7 @@ function emote(name) {
   current = a;
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v29 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v30 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1489,6 +1592,14 @@ function update(dt) {
     const g = glowMats[i];
     g.mat.emissiveIntensity = nightAmount * g.base * (0.78 + 0.22 * Math.sin(elapsed * 2 + g.phase));
   }
+
+  // Atmosfer: aurora (gece), gökkuşağı (gündüz), uçuşan yapraklar
+  for (let i = 0; i < auroraMats.length; i++) {
+    auroraMats[i].uniforms.time.value += dt;
+    auroraMats[i].uniforms.night.value = nightAmount;
+  }
+  if (rainbowMat) rainbowMat.opacity = (1 - nightAmount) * 0.22;
+  if (petalsMat) { petalsMat.uniforms.time.value += dt; petalsMat.uniforms.day.value = 1 - nightAmount; }
 
   clouds.rotation.y += dt * 0.005;
 }
