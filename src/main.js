@@ -1512,7 +1512,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v54 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v55 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1553,6 +1553,20 @@ const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v
     setStatus('karakter yüklendi ✓ (boy ' + (box.max.y - box.min.y).toFixed(1) + 'm)', 'ok');
 
     proc.visible = false;                 // yedek gövdeyi gizle
+
+    // Meşaleyi elin kemiğine tak → el hareketiyle birlikte hareket etsin
+    if (torchGroup) {
+      let handBone = null;
+      model.traverse((o) => { if (o.isBone && !handBone && /hand|wrist/i.test(o.name)) handBone = o; });
+      if (!handBone) model.traverse((o) => { if (o.isBone && !handBone && /arm|fore/i.test(o.name)) handBone = o; });
+      if (handBone) {
+        const inv = 1 / (model.scale.x || 1);       // kemik dünya ölçeğini geri al
+        torchGroup.scale.setScalar(inv);
+        torchGroup.position.set(0, 0, 0);
+        torchGroup.rotation.set(0, 0, 0);
+        handBone.add(torchGroup);
+      }
+    }
 
     // Animasyonlar
     mixer = new THREE.AnimationMixer(model);
