@@ -921,7 +921,7 @@ function emote(name) {
   current = a;
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v23 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v24 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -978,6 +978,7 @@ const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v
     actions.no = mk(pick('no'));
     actions.thumbsup = mk(pick('thumbsup', 'thumbs up'));
     actions.sit = mk(pick('sitting', 'sit'));
+    if (actions.sit) { actions.sit.setLoop(THREE.LoopOnce, 1); actions.sit.clampWhenFinished = true; }
     current = actions.idle;
     if (current) current.play();
 
