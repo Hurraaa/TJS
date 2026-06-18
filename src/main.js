@@ -1548,8 +1548,8 @@ scene.add(player);
 let torchOn = false, torchLight = null, torchFlameMat = null, torchGroup = null, torchHand = null, torchBalloon = null;
 {
   const g = new THREE.Group();
-  // balon konumu: daha yüksek + yana/öne (ip gövdeden geçmesin)
-  const bpos = new THREE.Vector3(0.6, 2.2, 0.35);
+  // balon konumu: elin biraz üstünde (ip elden çıkar, gövdeye değil)
+  const bpos = new THREE.Vector3(0.12, 1.85, 0.08);
   // ip (elden balona, eğik)
   const string = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, bpos.length(), 4), toon('#8a7a5a'));
   string.position.copy(bpos).multiplyScalar(0.5);
@@ -1575,9 +1575,9 @@ let torchOn = false, torchLight = null, torchFlameMat = null, torchGroup = null,
       gl_FragColor = vec4(col, body * (0.5 + 0.5*smoothstep(0.5,0.0,abs(vUv.x-0.5)))); }`,
   });
   const flame = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.34, 8, 1, true), torchFlameMat);
-  flame.position.set(0.6, 2.05, 0.35); g.add(flame);
+  flame.position.set(bpos.x, bpos.y - 0.15, bpos.z); g.add(flame);
   torchLight = new THREE.PointLight('#ff9a4a', 0, 20, 2);
-  torchLight.position.set(0.6, 2.2, 0.35); g.add(torchLight);
+  torchLight.position.copy(bpos); g.add(torchLight);
   g.visible = false; scene.add(g); torchGroup = g;   // konumu her kare elden gelir
 }
 function toggleTorch() { torchOn = !torchOn; torchGroup.visible = torchOn; }
@@ -1641,7 +1641,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v66 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v67 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -2559,15 +2559,15 @@ function update(dt) {
   if (torchOn && torchFlameMat) {
     torchFlameMat.uniforms.time.value += dt;
     torchLight.intensity = 8 + Math.sin(elapsed * 18) * 1.5 + Math.sin(elapsed * 30) * 0.8;
-    if (torchHand) {
-      torchHand.updateWorldMatrix(true, false);
-      torchHand.getWorldPosition(torchGroup.position);
-    } else {
-      const fx = Math.sin(player.rotation.y), fz = Math.cos(player.rotation.y);
-      torchGroup.position.set(player.position.x + fx * 0.3 + fz * 0.45, player.position.y + 1.45, player.position.z + fz * 0.3 - fx * 0.45);
-    }
-    torchGroup.rotation.set(Math.sin(elapsed * 1.5) * 0.06, player.rotation.y, Math.sin(elapsed * 1.2) * 0.06);  // balon süzülür
-    if (torchBalloon) torchBalloon.position.y = 2.2 + Math.sin(elapsed * 2) * 0.05;
+    // el konumu: gövdenin sağ-önü, el hizası (ip elden çıkar)
+    const fx = Math.sin(player.rotation.y), fz = Math.cos(player.rotation.y);
+    const rx = fz, rz = -fx;                          // sağ yön
+    torchGroup.position.set(
+      player.position.x + fx * 0.22 + rx * 0.42,
+      player.position.y + 1.35,
+      player.position.z + fz * 0.22 + rz * 0.42);
+    torchGroup.rotation.set(Math.sin(elapsed * 1.5) * 0.05, player.rotation.y, Math.sin(elapsed * 1.2) * 0.05);
+    if (torchBalloon) torchBalloon.position.y = 1.85 + Math.sin(elapsed * 2) * 0.05;
   }
 
   clouds.rotation.y += dt * 0.005;
