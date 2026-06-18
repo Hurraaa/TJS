@@ -534,21 +534,37 @@ for (let i = 0; i < 3; i++) {
   scene.add(new THREE.Points(geo, petalsMat));
 }
 
-// ---- Sonbahar yaprakları (oyuncu çevresinde sürekli süzülerek düşer) --
-let leavesPts = null; const _leafN = 170; const _leafD = [];
+// ---- Sonbahar yaprakları (oyuncu çevresinde süzülerek dönerek düşer) ---
+// Gerçek yaprak silüetli düz meshler, tek InstancedMesh ile dönerek savrulur.
+let leavesInst = null; const _leafN = 150; const _leafD = [];
+const _leafDummy = new THREE.Object3D();
 {
-  const pos = new Float32Array(_leafN * 3), col = new Float32Array(_leafN * 3);
-  const pal = [new THREE.Color('#d98a3a'), new THREE.Color('#c0584f'), new THREE.Color('#e0b24a'), new THREE.Color('#9a6a2a'), new THREE.Color('#c98a4a')];
+  // yaprak silüeti (sivri uçlu oval) + orta damar çentiği
+  const sh = new THREE.Shape();
+  sh.moveTo(0, -0.5);
+  sh.bezierCurveTo(0.42, -0.18, 0.34, 0.42, 0, 0.6);
+  sh.bezierCurveTo(-0.34, 0.42, -0.42, -0.18, 0, -0.5);
+  const geo = new THREE.ShapeGeometry(sh, 8);
+  geo.scale(0.45, 0.45, 0.45);
+  const mat = new THREE.MeshToonMaterial({ vertexColors: false, side: THREE.DoubleSide, transparent: true, opacity: 0.96 });
+  leavesInst = new THREE.InstancedMesh(geo, mat, _leafN);
+  leavesInst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  leavesInst.frustumCulled = false; leavesInst.castShadow = false;
+  const pal = ['#d98a3a', '#c0584f', '#e0b24a', '#9a6a2a', '#c98a4a', '#b8472f'];
+  const _c = new THREE.Color();
   for (let i = 0; i < _leafN; i++) {
-    pos[i * 3] = (Math.random() - 0.5) * 80; pos[i * 3 + 1] = Math.random() * 24; pos[i * 3 + 2] = (Math.random() - 0.5) * 80;
-    const c = pal[(Math.random() * pal.length) | 0]; col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
-    _leafD.push({ phase: Math.random() * 6.28, sway: 0.6 + Math.random() * 1.4, fall: 1.1 + Math.random() * 1.3 });
+    const d = {
+      x: (Math.random() - 0.5) * 80, y: Math.random() * 24, z: (Math.random() - 0.5) * 80,
+      phase: Math.random() * 6.28, sway: 0.6 + Math.random() * 1.4, fall: 1.0 + Math.random() * 1.2,
+      rx: Math.random() * 6.28, ry: Math.random() * 6.28, rz: Math.random() * 6.28,
+      sx: (Math.random() - 0.5) * 2.4, sy: (Math.random() - 0.5) * 1.6, sz: (Math.random() - 0.5) * 3.2,
+      sc: 0.8 + Math.random() * 0.7,
+    };
+    _leafD.push(d);
+    leavesInst.setColorAt(i, _c.set(pal[(Math.random() * pal.length) | 0]));
   }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  leavesPts = new THREE.Points(g, new THREE.PointsMaterial({ size: 0.3, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false, sizeAttenuation: true }));
-  leavesPts.frustumCulled = false; scene.add(leavesPts);
+  leavesInst.instanceColor.needsUpdate = true;
+  scene.add(leavesInst);
 }
 
 // ---- Arılar (gündüz, çiçeklerin üstünde vızıldar) ---------------------
@@ -1756,7 +1772,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v75 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v76 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -2769,21 +2785,26 @@ function update(dt) {
     torchString.geometry.attributes.position.needsUpdate = true;
   }
 
-  // --- Sonbahar yaprakları: süzülerek düş, oyuncu çevresinde geri dön ---
-  if (leavesPts) {
-    const a = leavesPts.geometry.attributes.position.array;
+  // --- Sonbahar yaprakları: dönerek süzül, oyuncu çevresinde geri dön ---
+  if (leavesInst) {
     for (let i = 0; i < _leafN; i++) {
       const d = _leafD[i];
-      a[i * 3 + 1] -= d.fall * dt;
-      a[i * 3] += Math.sin(elapsed * d.sway + d.phase) * dt * 0.6;
-      a[i * 3 + 2] += Math.cos(elapsed * d.sway * 0.8 + d.phase) * dt * 0.5;
-      if (a[i * 3 + 1] < heightAt(a[i * 3], a[i * 3 + 2]) + 0.1) {
-        a[i * 3] = player.position.x + (Math.random() - 0.5) * 70;
-        a[i * 3 + 2] = player.position.z + (Math.random() - 0.5) * 70;
-        a[i * 3 + 1] = 16 + Math.random() * 8;
+      d.y -= d.fall * dt;
+      d.x += Math.sin(elapsed * d.sway + d.phase) * dt * 0.7;
+      d.z += Math.cos(elapsed * d.sway * 0.8 + d.phase) * dt * 0.6;
+      d.rx += d.sx * dt; d.ry += d.sy * dt; d.rz += d.sz * dt;
+      if (d.y < heightAt(d.x, d.z) + 0.1) {
+        d.x = player.position.x + (Math.random() - 0.5) * 70;
+        d.z = player.position.z + (Math.random() - 0.5) * 70;
+        d.y = 16 + Math.random() * 8;
       }
+      _leafDummy.position.set(d.x, d.y, d.z);
+      _leafDummy.rotation.set(d.rx, d.ry, d.rz);
+      _leafDummy.scale.setScalar(d.sc);
+      _leafDummy.updateMatrix();
+      leavesInst.setMatrixAt(i, _leafDummy.matrix);
     }
-    leavesPts.geometry.attributes.position.needsUpdate = true;
+    leavesInst.instanceMatrix.needsUpdate = true;
   }
 
   // --- Arılar (gündüz görünür) -----------------------------------------
