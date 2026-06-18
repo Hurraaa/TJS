@@ -1544,32 +1544,37 @@ player.add(proc);
 player.position.set(0, heightAt(0, 0), 0);
 scene.add(player);
 
-// ---- Meşale (gece elde taşınır, etrafı aydınlatır) --------------------
-let torchOn = false, torchLight = null, torchFlameMat = null, torchGroup = null, torchHand = null;
+// ---- Ateş balonu (gece elde ipiyle taşınır, etrafı aydınlatır) --------
+let torchOn = false, torchLight = null, torchFlameMat = null, torchGroup = null, torchHand = null, torchBalloon = null;
 {
   const g = new THREE.Group();
-  const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.95, 6), toon('#5a3a22'));
-  handle.rotation.z = 0.32; addOutline(handle, 0.02); g.add(handle);
-  const wrap = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.08, 0.26, 7), toon('#3a2a1a'));
-  wrap.position.set(0.08, 0.52, 0); g.add(wrap);
+  // ip (elden balona)
+  const string = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1.0, 4), toon('#8a7a5a'));
+  string.position.y = 0.55; g.add(string);
+  // balon gövdesi (parlayan kağıt fener / ateş balonu)
+  const balloonMat = new THREE.MeshToonMaterial({ color: '#ff9a4a', emissive: new THREE.Color('#ff7a2a'), emissiveIntensity: 1.3, gradientMap: ramp });
+  torchBalloon = new THREE.Mesh(new THREE.SphereGeometry(0.34, 16, 14), balloonMat);
+  torchBalloon.scale.set(1, 1.25, 1); torchBalloon.position.y = 1.45; g.add(torchBalloon);
+  // alt halka (ağız)
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.03, 8, 16), toon('#6b4a30'));
+  ring.rotation.x = Math.PI / 2; ring.position.y = 1.12; g.add(ring);
+  // içteki küçük alev
   torchFlameMat = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-    uniforms: { time: { value: 0 }, c1: { value: new THREE.Color('#ff6a1e') }, c2: { value: new THREE.Color('#ffd54a') } },
+    uniforms: { time: { value: 0 }, c1: { value: new THREE.Color('#ff6a1e') }, c2: { value: new THREE.Color('#ffe08a') } },
     vertexShader: `varying vec2 vUv; uniform float time; void main(){ vUv=uv; vec3 p=position; float k=uv.y;
-      p.x += sin(time*12.0 + p.y*6.0)*0.05*k; p.z += cos(time*10.0)*0.05*k;
-      gl_Position = projectionMatrix*modelViewMatrix*vec4(p,1.0); }`,
+      p.x += sin(time*12.0 + p.y*6.0)*0.03*k; gl_Position = projectionMatrix*modelViewMatrix*vec4(p,1.0); }`,
     fragmentShader: `varying vec2 vUv; uniform float time; uniform vec3 c1; uniform vec3 c2; void main(){
-      float fl = 0.82 + 0.18*sin(time*25.0);
+      float fl = 0.8 + 0.2*sin(time*25.0);
       float body = smoothstep(1.0, 0.1, vUv.y) * fl;
       vec3 col = mix(c1, c2, vUv.y);
-      gl_FragColor = vec4(col, body * (0.55 + 0.45*smoothstep(0.5,0.0,abs(vUv.x-0.5)))); }`,
+      gl_FragColor = vec4(col, body * (0.5 + 0.5*smoothstep(0.5,0.0,abs(vUv.x-0.5)))); }`,
   });
-  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.55, 8, 1, true), torchFlameMat);
-  flame.position.set(0.16, 0.82, 0); g.add(flame);
-  torchLight = new THREE.PointLight('#ff8a3a', 0, 18, 2);
-  torchLight.position.set(0.16, 0.85, 0); g.add(torchLight);
-  g.position.set(0.55, 1.35, 0.4);        // sağ el, hafif önde
-  g.visible = false; scene.add(g); torchGroup = g;   // konumu her kare elden gelir, yönü dik kalır
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.34, 8, 1, true), torchFlameMat);
+  flame.position.y = 1.28; g.add(flame);
+  torchLight = new THREE.PointLight('#ff9a4a', 0, 20, 2);
+  torchLight.position.y = 1.45; g.add(torchLight);
+  g.visible = false; scene.add(g); torchGroup = g;   // konumu her kare elden gelir
 }
 function toggleTorch() { torchOn = !torchOn; torchGroup.visible = torchOn; }
 addEventListener('keydown', (e) => { if (!e.repeat && e.code === 'KeyM') toggleTorch(); });
@@ -1632,7 +1637,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v64 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v65 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -2546,10 +2551,10 @@ function update(dt) {
     if (rp.t > 1.3) { scene.remove(rp.mesh); rp.mesh.material.dispose(); lakeRipples.splice(i, 1); }
   }
 
-  // Meşale: konumu elden al, dik tut; alev + titreyen ışık
+  // Ateş balonu: konumu elden al, dik tut; alev + titreyen ışık + hafif süzülme
   if (torchOn && torchFlameMat) {
     torchFlameMat.uniforms.time.value += dt;
-    torchLight.intensity = 7 + Math.sin(elapsed * 20) * 2 + Math.sin(elapsed * 33) * 1;
+    torchLight.intensity = 8 + Math.sin(elapsed * 18) * 1.5 + Math.sin(elapsed * 30) * 0.8;
     if (torchHand) {
       torchHand.updateWorldMatrix(true, false);
       torchHand.getWorldPosition(torchGroup.position);
@@ -2557,7 +2562,8 @@ function update(dt) {
       const fx = Math.sin(player.rotation.y), fz = Math.cos(player.rotation.y);
       torchGroup.position.set(player.position.x + fx * 0.3 + fz * 0.45, player.position.y + 1.45, player.position.z + fz * 0.3 - fx * 0.45);
     }
-    torchGroup.rotation.set(0, player.rotation.y, 0);   // her zaman dik (alev yukarı)
+    torchGroup.rotation.set(Math.sin(elapsed * 1.5) * 0.06, player.rotation.y, Math.sin(elapsed * 1.2) * 0.06);  // balon süzülür
+    if (torchBalloon) torchBalloon.position.y = 1.45 + Math.sin(elapsed * 2) * 0.04;
   }
 
   clouds.rotation.y += dt * 0.005;
