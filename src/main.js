@@ -1546,7 +1546,7 @@ scene.add(player);
 
 // ---- Ateş balonu (gece elde ipiyle; yaylı/sarkaç fizikle salınır) -----
 let torchOn = false, torchLight = null, torchFlameMat = null, torchBalloon = null, torchString = null;
-const TORCH_L = 1.7;                              // ip boyu
+const TORCH_L = 2.4;                              // ip boyu (kola doğru uzun)
 const _balPos = new THREE.Vector3(), _balVel = new THREE.Vector3();
 const _hand = new THREE.Vector3(), _target = new THREE.Vector3(), _dir = new THREE.Vector3(), _mid = new THREE.Vector3();
 const TORCH_UP = new THREE.Vector3(0, 1, 0);
@@ -1643,7 +1643,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v69 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v70 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -2572,6 +2572,16 @@ function update(dt) {
     _dir.copy(_balPos).sub(_hand);
     const len = _dir.length() || 1;
     _balPos.copy(_hand).addScaledVector(_dir, TORCH_L / len);
+    // gövdeyle kesişmesin: balon her zaman gövdenin sağ-dışında kalsın
+    const relx = _balPos.x - player.position.x, relz = _balPos.z - player.position.z;
+    const rightComp = relx * fz - relz * fx;          // sağ yön bileşeni
+    if (rightComp < 0.75) {
+      const add = 0.75 - rightComp;
+      _balPos.x += fz * add; _balPos.z += -fx * add;
+      _balVel.multiplyScalar(0.4);                    // içeri çarpınca yumuşat
+      _dir.copy(_balPos).sub(_hand);                  // ip boyunu tekrar koru
+      _balPos.copy(_hand).addScaledVector(_dir, TORCH_L / (_dir.length() || 1));
+    }
     // yerleştir (balon dik kalır; sadece konumu salınır)
     torchBalloon.position.copy(_balPos);
     // ip: elden balona
