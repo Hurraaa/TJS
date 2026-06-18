@@ -178,19 +178,57 @@ scene.add(ground);
   scene.add(path);
 }
 
-// Yol kenarı fenerleri (gece yanar)
+// Yol kenarı fenerleri — 1800'ler Avrupa (Viktorya gaz feneri) tarzı,
+// dökme demir direk + altıgen camlı fanus + gerçek ışık (gece yanar).
+const _ironMat = toon('#26262b');
+function makeStreetLamp() {
+  const g = new THREE.Group();
+  // taban: kademeli kaide
+  const b0 = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.22, 0.62), _ironMat);
+  b0.position.y = 0.11; b0.castShadow = true; addOutline(b0, 0.03); g.add(b0);
+  const b1 = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.3, 8), _ironMat);
+  b1.position.y = 0.36; b1.castShadow = true; g.add(b1);
+  // sütun: ince uzun konik direk + orta bilezik
+  const col = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.13, 3.0, 10), _ironMat);
+  col.position.y = 2.0; col.castShadow = true; addOutline(col, 0.025); g.add(col);
+  const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.14, 10), _ironMat);
+  collar.position.y = 1.55; g.add(collar);
+  // fanus altı huni + üst bilezik
+  const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.12, 0.22, 8), _ironMat);
+  cup.position.y = 3.6; g.add(cup);
+  // camlı gövde (sıcak parlayan)
+  const glassMat = new THREE.MeshToonMaterial({
+    color: '#7a5a22', emissive: new THREE.Color('#ffc25e'), emissiveIntensity: 0,
+    transparent: true, opacity: 0.92, gradientMap: ramp,
+  });
+  const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.24, 0.56, 6), glassMat);
+  glass.position.y = 4.0; g.add(glass);
+  // dikey kafes çubukları (6 köşe)
+  for (let k = 0; k < 6; k++) {
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.6, 4), _ironMat);
+    const a = (k / 6) * Math.PI * 2;
+    bar.position.set(Math.cos(a) * 0.225, 4.0, Math.sin(a) * 0.225);
+    g.add(bar);
+  }
+  // altıgen piramit çatı + tepe topuzu/iğne
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.34, 6), _ironMat);
+  roof.position.y = 4.45; roof.castShadow = true; addOutline(roof, 0.03); g.add(roof);
+  const knob = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), _ironMat);
+  knob.position.y = 4.66; g.add(knob);
+  const spike = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.16, 6), _ironMat);
+  spike.position.y = 4.78; g.add(spike);
+  // gerçek ışık (fanusun içinden)
+  const light = new THREE.PointLight('#ffb866', 0, 26, 2);
+  light.position.y = 4.0; g.add(light);
+  return { g, glassMat, light };
+}
 for (let i = 0; i < 11; i++) {
   const z = -WORLD / 2 + 18 + i * ((WORLD - 36) / 10);
   const x = (i % 2 === 0 ? -1 : 1) * 4.4;
-  const gy = heightAt(x, z);
-  const g = new THREE.Group(); g.position.set(x, gy, z); scene.add(g);
-  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 2.2, 6), toon('#4a3a2a'));
-  post.position.y = 1.1; post.castShadow = true; addOutline(post, 0.03); g.add(post);
-  const lampMat = new THREE.MeshToonMaterial({ color: '#5a4326', emissive: new THREE.Color('#ffcf6b'), emissiveIntensity: 0, gradientMap: ramp });
-  const lamp = new THREE.Mesh(new THREE.IcosahedronGeometry(0.16, 0), lampMat);
-  lamp.position.y = 2.25; g.add(lamp);
-  glowMats.push({ mat: lampMat, base: 1.8, phase: Math.random() * 6.28 });
-  colliders.push({ x, z, r: 0.3 });
+  const { g, glassMat, light } = makeStreetLamp();
+  g.position.set(x, heightAt(x, z), z); scene.add(g);
+  glowMats.push({ mat: glassMat, base: 2.4, phase: Math.random() * 6.28, light, lightBase: 16 });
+  colliders.push({ x, z, r: 0.35 });
 }
 
 // Göl (yansımalı su — three.js Water)
@@ -1772,7 +1810,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v76 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v77 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -2556,7 +2594,9 @@ function update(dt) {
   // Biyolüminesan flora: geceleri parlar (hafif nabız)
   for (let i = 0; i < glowMats.length; i++) {
     const g = glowMats[i];
-    g.mat.emissiveIntensity = nightAmount * g.base * (0.78 + 0.22 * Math.sin(elapsed * 2 + g.phase));
+    const pulse = 0.86 + 0.14 * Math.sin(elapsed * 2 + g.phase);
+    g.mat.emissiveIntensity = nightAmount * g.base * pulse;
+    if (g.light) g.light.intensity = nightAmount * g.lightBase * pulse;
   }
 
   // Atmosfer: aurora (gece), gökkuşağı (gündüz), uçuşan yapraklar
