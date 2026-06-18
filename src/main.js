@@ -675,18 +675,24 @@ addEventListener('keydown', (e) => { if (!e.repeat && e.code === 'KeyR') toggleR
 }
 
 // ---- Dağlar -----------------------------------------------------------
-// Kar çizgili, kayalık, doğal siluetli zirveler (vertex renkli toon).
+// Katmanlı (strata) kayalı, kar çizgili, doğal siluetli zirveler.
 const _snowCol = new THREE.Color('#eef4fb');
 function coloredPeak(r, h, rockHex, snowLine, outline) {
-  const geo = roughen(new THREE.ConeGeometry(r, h, 11, 7), r * 0.07);
+  const geo = roughen(new THREE.ConeGeometry(r, h, 13, 9), r * 0.085);
   const pos = geo.attributes.position;
   const col = new Float32Array(pos.count * 3);
-  const rock = new THREE.Color(rockHex), tmp = new THREE.Color();
+  const rock = new THREE.Color(rockHex);
+  const dark = rock.clone().multiplyScalar(0.64);
+  const tmp = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
     const yy = (pos.getY(i) + h / 2) / h;                 // 0 taban .. 1 tepe
-    let s = THREE.MathUtils.smoothstep(yy, snowLine, snowLine + 0.18);
-    s *= 0.7 + 0.3 * Math.random();                       // kar kenarı düzensiz
-    tmp.copy(rock).lerp(_snowCol, THREE.MathUtils.clamp(s, 0, 1));
+    // yatay kaya katmanları (sedimanter bantlar)
+    const band = 0.5 + 0.5 * Math.sin(yy * 19.0 + pos.getX(i) * 0.25 + pos.getZ(i) * 0.2);
+    tmp.copy(dark).lerp(rock, 0.45 + 0.55 * band);
+    // kar tepeye doğru, düzensiz kenarlı
+    let s = THREE.MathUtils.smoothstep(yy, snowLine, snowLine + 0.16);
+    s *= 0.6 + 0.4 * Math.random();
+    tmp.lerp(_snowCol, THREE.MathUtils.clamp(s, 0, 1));
     const v = 0.9 + Math.random() * 0.2;                  // kaya damar varyasyonu
     col[i * 3] = tmp.r * v; col[i * 3 + 1] = tmp.g * v; col[i * 3 + 2] = tmp.b * v;
   }
@@ -696,174 +702,217 @@ function coloredPeak(r, h, rockHex, snowLine, outline) {
   m.castShadow = true; m.receiveShadow = true; addOutline(m, outline);
   return m;
 }
-function addMountain(mx, mz, h, baseR, color) {
+function addMountain(mx, mz, h, baseR, color, opts = {}) {
+  const snowLine = opts.snowLine ?? 0.62;
   const g = new THREE.Group();
-  const main = coloredPeak(baseR, h, color, 0.62, 0.5);
+  const main = coloredPeak(baseR, h, color, snowLine, 0.5);
   main.position.y = h / 2; g.add(main);
   // doğal siluet için yan sırtlar (farklı yön/yükseklik)
-  const ridges = 3;
+  const ridges = opts.ridges ?? 3;
   for (let i = 0; i < ridges; i++) {
-    const r = baseR * (0.6 - i * 0.13), hh = h * (0.72 - i * 0.16);
-    const c = coloredPeak(r, hh, color, 0.66, 0.35);
+    const r = baseR * (0.62 - i * 0.11), hh = h * (0.74 - i * 0.14);
+    const c = coloredPeak(r, hh, color, snowLine + 0.05, 0.35);
     const a = (i / ridges) * Math.PI * 2 + Math.random();
-    const dist = baseR * (0.4 + Math.random() * 0.25);
-    c.position.set(Math.cos(a) * dist, hh / 2 - h * 0.04, Math.sin(a) * dist);
+    const dist = baseR * (0.42 + Math.random() * 0.24);
+    c.position.set(Math.cos(a) * dist, hh / 2 - h * 0.05, Math.sin(a) * dist);
     g.add(c);
   }
-  // etekte birkaç kaya
-  for (let i = 0; i < 5; i++) {
-    const rr = baseR * (0.05 + Math.random() * 0.05);
-    const rock = new THREE.Mesh(roughen(new THREE.DodecahedronGeometry(rr, 0), rr * 0.2), toon(color));
-    const a = Math.random() * Math.PI * 2, dist = baseR * (0.8 + Math.random() * 0.15);
+  // etekte moloz/kaya (scree)
+  for (let i = 0; i < 8; i++) {
+    const rr = baseR * (0.04 + Math.random() * 0.06);
+    const rock = new THREE.Mesh(roughen(new THREE.DodecahedronGeometry(rr, 0), rr * 0.25), toon(color));
+    const a = Math.random() * Math.PI * 2, dist = baseR * (0.78 + Math.random() * 0.2);
     rock.position.set(Math.cos(a) * dist, rr * 0.5, Math.sin(a) * dist);
     rock.rotation.set(Math.random(), Math.random(), Math.random());
     rock.castShadow = true; addOutline(rock, 0.1); g.add(rock);
   }
   g.position.set(mx, heightAt(mx, mz) - 1, mz);
+  g.scale.set(1, 1, opts.flatten ?? 1);
   scene.add(g);
-  colliders.push({ x: mx, z: mz, r: baseR * 0.9 });
+  if (!opts.noCollide) colliders.push({ x: mx, z: mz, r: baseR * 0.9 });
   return g;
 }
-addMountain(-104, 40, 66, 44, '#7c8a86');     // şelale dağı (ana)
-addMountain(-120, 92, 52, 36, '#84908b');     // arkada sıradağ
-addMountain(-118, -8, 46, 32, '#7a8682');
+// Uzak sıradağlar — puslu, soğuk tonlu, derinlik/ölçek hissi için
+addMountain(-150, 30, 84, 52, '#8b97a3', { snowLine: 0.5, ridges: 4, noCollide: true });
+addMountain(-168, 88, 72, 46, '#929dab', { snowLine: 0.52, ridges: 3, noCollide: true });
+addMountain(-160, -40, 76, 48, '#8893a0', { snowLine: 0.5, ridges: 3, noCollide: true });
+addMountain(-196, 6, 68, 44, '#9aa4b2', { snowLine: 0.54, noCollide: true });
+// Orta plan tepeler
+addMountain(-120, 96, 52, 34, '#82908b', { noCollide: true });
+addMountain(-122, -12, 50, 32, '#7c8a85', { noCollide: true });
 
-// ---- Şelale (dağdan göle dökülür) -------------------------------------
+// ---- Şelale dağı + çok kademeli şelale --------------------------------
 const waterfallParts = [];
 {
-  const baseX = LAKE.x - LAKE.r + 6, baseZ = LAKE.z;
+  const baseX = LAKE.x - LAKE.r + 2, baseZ = LAKE.z;   // göl batı kıyısı (-64,40)
   const lakeY = heightAt(LAKE.x, LAKE.z) + 0.15;
-  const fallH = 30;                            // dağ yamacından göle kadar
-  const topY = lakeY + fallH;
+  const SRC = lakeY + 48;                               // boğaz kaynağı (en üst)
 
-  // Kaya kanal/uçurum — dağ eteğinden suya
-  for (let i = 0; i < 11; i++) {
-    const r = 3.4 + Math.random() * 2.2;
-    const rock = new THREE.Mesh(roughen(new THREE.DodecahedronGeometry(r, 0), r * 0.2), toon('#7f857f'));
-    rock.position.set(baseX - 5 + (Math.random() - 0.5) * 3, lakeY + 1 + i * 2.7, baseZ + (Math.random() - 0.5) * 10);
-    rock.rotation.set(Math.random(), Math.random(), Math.random());
-    rock.castShadow = true; rock.receiveShadow = true; addOutline(rock, 0.06);
-    scene.add(rock);
-    if (i < 3) colliders.push({ x: rock.position.x, z: rock.position.z, r: r * 0.7 });
+  // Ana kütle: yüksek, karlı dağ (çarpışma cliff'e bırakıldı)
+  addMountain(baseX - 48, baseZ, 82, 44, '#79857f', { snowLine: 0.58, ridges: 4, noCollide: true });
+
+  // --- Dik kaya yüzü (göle bakan): katmanlı + ıslak orta oluk + yosun ----
+  {
+    const W = 26, H = 56, D = 10;
+    const geo = roughen(new THREE.BoxGeometry(D, H, W, 3, 11, 14), 0.55);
+    const pos = geo.attributes.position;
+    const col = new Float32Array(pos.count * 3);
+    const rock = new THREE.Color('#6f756f'), dark = new THREE.Color('#3c423e');
+    const wet = new THREE.Color('#2c3a39'), moss = new THREE.Color('#4d6a3e');
+    const tmp = new THREE.Color();
+    for (let i = 0; i < pos.count; i++) {
+      const yy = (pos.getY(i) + H / 2) / H;             // 0 dip .. 1 tepe
+      const zc = pos.getZ(i);                           // oluk merkezi z=0
+      const band = 0.5 + 0.5 * Math.sin(yy * 24.0 + zc * 0.2);
+      tmp.copy(dark).lerp(rock, 0.4 + 0.6 * band);
+      const channel = Math.exp(-(zc * zc) / 16.0);      // suyun aktığı ıslak oluk
+      tmp.lerp(wet, channel * 0.85);
+      tmp.lerp(moss, THREE.MathUtils.smoothstep(yy, 0.34, 0.0) * 0.45 * (1.0 - channel));
+      tmp.lerp(_snowCol, THREE.MathUtils.smoothstep(yy, 0.82, 0.96) * (0.55 + 0.45 * Math.random()));
+      const v = 0.9 + Math.random() * 0.2;
+      col[i * 3] = tmp.r * v; col[i * 3 + 1] = tmp.g * v; col[i * 3 + 2] = tmp.b * v;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    geo.computeVertexNormals();
+    const wall = new THREE.Mesh(geo, new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: ramp }));
+    wall.position.set(baseX - D / 2 - 1, lakeY - 6 + H / 2, baseZ);  // +x yüzü ≈ baseX-1
+    wall.castShadow = true; wall.receiveShadow = true; addOutline(wall, 0.14);
+    scene.add(wall);
+    // cliff dibi çarpışma duvarı
+    for (let zc = -8; zc <= 8; zc += 4) colliders.push({ x: baseX - 1.5, z: baseZ + zc, r: 3.0 });
   }
 
-  // Akan su perdesi (animasyonlu shader)
-  const fallMat = new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false, side: THREE.DoubleSide,
-    uniforms: {
-      time: { value: 0 },
-      top: { value: new THREE.Color('#e3f4ff') },
-      bot: { value: new THREE.Color('#86c6e8') },
-    },
-    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-    fragmentShader: `
-      varying vec2 vUv; uniform float time; uniform vec3 top; uniform vec3 bot;
-      float hash(float x){ return fract(sin(x * 91.17) * 43758.5453); }
-      void main(){
-        float lanes = floor(vUv.x * 9.0);
-        float speed = 1.3 + hash(lanes) * 0.9;
-        float flow = fract(vUv.y * 4.0 - time * speed + hash(lanes) * 5.0);
-        float streak = smoothstep(0.0, 0.5, flow) * smoothstep(1.0, 0.5, flow);
-        float body = 0.5 + streak * 0.5;
-        float edge = smoothstep(0.0, 0.12, vUv.x) * smoothstep(1.0, 0.88, vUv.x);
-        vec3 col = mix(bot, top, vUv.y);
-        col = mix(col, vec3(1.0), smoothstep(0.18, 0.0, vUv.y) * 0.85); // dip köpük
-        gl_FragColor = vec4(col, body * edge);
-      }`,
-  });
-  const fall = new THREE.Mesh(new THREE.PlaneGeometry(6.5, fallH), fallMat);
-  fall.position.set(baseX, lakeY + fallH / 2, baseZ);
-  fall.rotation.y = Math.PI / 2;            // perde göle bakar
-  scene.add(fall);
-  waterfallParts.push({ type: 'fall', mat: fallMat });
-
-  // Tepe kaynağı: su, kayalıkların arasından/dudağın altından çıkıyormuş gibi görünsün
-  for (let i = 0; i < 7; i++) {
-    const r = 1.7 + Math.random() * 1.8;
-    const rock = new THREE.Mesh(roughen(new THREE.DodecahedronGeometry(r, 0), r * 0.2), toon('#777d77'));
-    const ang = Math.random() * Math.PI * 2;
-    rock.position.set(baseX - 1.2 + Math.cos(ang) * 2.2, topY - 0.6 + (Math.random() - 0.5) * 2.4, baseZ + Math.sin(ang) * 3.6);
-    rock.rotation.set(Math.random(), Math.random(), Math.random());
-    rock.castShadow = true; addOutline(rock, 0.06); scene.add(rock);
+  // Oluğu çerçeveleyen kaya sütunları (iki yan) + tepe sarkan dudağı
+  for (let side = -1; side <= 1; side += 2) {
+    for (let i = 0; i < 7; i++) {
+      const r = 2.2 + Math.random() * 1.7;
+      const rk = new THREE.Mesh(roughen(new THREE.DodecahedronGeometry(r, 0), r * 0.22), toon('#6a706a'));
+      rk.position.set(baseX - 1.5 + (Math.random() - 0.5) * 1.6, lakeY + 2 + i * 7.2, baseZ + side * (4.6 + Math.random() * 1.2));
+      rk.rotation.set(Math.random(), Math.random(), Math.random());
+      rk.castShadow = true; addOutline(rk, 0.07); scene.add(rk);
+    }
   }
-  // Öne sarkan kaya dudağı — perdenin düz üst kenarını maskeler
-  const lip = new THREE.Mesh(roughen(new THREE.BoxGeometry(1.6, 1.1, 7.4), 0.12), toon('#6c726c'));
-  lip.position.set(baseX + 0.5, topY + 0.25, baseZ); lip.rotation.z = 0.05;
-  lip.castShadow = true; addOutline(lip, 0.05); scene.add(lip);
+  const lip = new THREE.Mesh(roughen(new THREE.BoxGeometry(2.6, 1.3, 8.2), 0.16), toon('#646a64'));
+  lip.position.set(baseX - 0.4, SRC + 0.6, baseZ); lip.rotation.z = 0.06;
+  lip.castShadow = true; addOutline(lip, 0.06); scene.add(lip);
+  for (let i = 0; i < 5; i++) {                         // kaynaktan çıkan kayalar
+    const r = 1.5 + Math.random() * 1.6;
+    const rk = new THREE.Mesh(roughen(new THREE.DodecahedronGeometry(r, 0), r * 0.2), toon('#777d77'));
+    rk.position.set(baseX - 2 + Math.random() * 1.5, SRC - 1 + (Math.random() - 0.5) * 2.2, baseZ + (Math.random() - 0.5) * 6);
+    rk.rotation.set(Math.random(), Math.random(), Math.random());
+    rk.castShadow = true; addOutline(rk, 0.06); scene.add(rk);
+  }
 
-  // Dip köpük — yumuşak, çalkantılı disk (shader)
-  const foamMat = new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false,
-    uniforms: { time: { value: 0 } },
-    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-    fragmentShader: `
-      varying vec2 vUv; uniform float time;
-      void main(){
-        vec2 p = vUv - 0.5;
-        float r = length(p) * 2.0;            // 0 merkez .. 1 kenar
-        float a = atan(p.y, p.x);
-        float churn = 0.5 + 0.5 * sin(a * 7.0 + time * 3.0) * sin(a * 3.0 - time * 2.0);
-        float rings = 0.5 + 0.5 * sin(r * 16.0 - time * 5.0);
-        float foam = smoothstep(1.0, 0.15, r);            // merkeze doğru yoğun
-        foam *= 0.55 + 0.45 * churn;
-        foam *= 0.7 + 0.3 * rings;
-        float alpha = foam * smoothstep(1.0, 0.6, r);
-        gl_FragColor = vec4(vec3(1.0), alpha * 0.9);
-      }`,
-  });
-  const foam = new THREE.Mesh(new THREE.CircleGeometry(6, 44), foamMat);
-  foam.rotation.x = -Math.PI / 2;
-  foam.position.set(baseX, lakeY + 0.08, baseZ);
-  scene.add(foam);
-  waterfallParts.push({ type: 'foam', mat: foamMat });
+  // --- Yardımcılar: akan perde, köpük diski, sıçrama ----------------------
+  function makeCurtain(yTop, yBot, width, xPos) {
+    const mat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      uniforms: { time: { value: 0 }, top: { value: new THREE.Color('#eaf6ff') }, bot: { value: new THREE.Color('#8fcbe9') } },
+      vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `
+        varying vec2 vUv; uniform float time; uniform vec3 top; uniform vec3 bot;
+        float hash(float x){ return fract(sin(x * 91.17) * 43758.5453); }
+        void main(){
+          float lanes = floor(vUv.x * 11.0);
+          float speed = 1.2 + hash(lanes) * 1.1;
+          float off = hash(lanes + 7.0);
+          float flow = fract(vUv.y * 5.0 - time * speed + off * 5.0);
+          float streak = smoothstep(0.0, 0.5, flow) * smoothstep(1.0, 0.5, flow);
+          float flow2 = fract(vUv.y * 9.0 - time * speed * 1.7 + off * 3.0);
+          float fine = smoothstep(0.0, 0.4, flow2) * smoothstep(0.9, 0.4, flow2) * 0.4;
+          float body = 0.42 + streak * 0.5 + fine;
+          vec3 col = mix(bot, top, vUv.y);
+          col = mix(col, vec3(1.0), smoothstep(0.20, 0.0, vUv.y) * 0.9);    // dip köpük
+          col = mix(col, vec3(1.0), smoothstep(0.88, 1.0, vUv.y) * 0.55);   // dudak köpüğü
+          float edge = smoothstep(0.0, 0.10, vUv.x) * smoothstep(1.0, 0.90, vUv.x);
+          float alpha = body * edge;
+          alpha = max(alpha, smoothstep(0.16, 0.0, vUv.y) * edge);           // yoğun dip
+          gl_FragColor = vec4(col, alpha);
+        }`,
+    });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, yTop - yBot), mat);
+    mesh.rotation.y = Math.PI / 2;
+    mesh.position.set(xPos, (yTop + yBot) / 2, baseZ);
+    scene.add(mesh);
+    waterfallParts.push({ type: 'fall', mat });
+  }
+  function makeFoam(x, y, r) {
+    const mat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false,
+      uniforms: { time: { value: 0 } },
+      vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `
+        varying vec2 vUv; uniform float time;
+        void main(){
+          vec2 p = vUv - 0.5; float r = length(p) * 2.0; float a = atan(p.y, p.x);
+          float churn = 0.5 + 0.5 * sin(a * 7.0 + time * 3.0) * sin(a * 3.0 - time * 2.0);
+          float rings = 0.5 + 0.5 * sin(r * 16.0 - time * 5.0);
+          float foam = smoothstep(1.0, 0.15, r) * (0.55 + 0.45 * churn) * (0.7 + 0.3 * rings);
+          gl_FragColor = vec4(vec3(1.0), foam * smoothstep(1.0, 0.6, r) * 0.9);
+        }`,
+    });
+    const m = new THREE.Mesh(new THREE.CircleGeometry(r, 40), mat);
+    m.rotation.x = -Math.PI / 2; m.position.set(x, y + 0.08, baseZ);
+    scene.add(m); waterfallParts.push({ type: 'foam', mat });
+  }
+  function makeSplash(x, y, count, spread, power) {
+    const spos = new Float32Array(count * 3), svel = new Float32Array(count * 3);
+    const reset = (i) => {
+      spos[i * 3] = x + (Math.random() - 0.5) * spread;
+      spos[i * 3 + 1] = y + 0.2;
+      spos[i * 3 + 2] = baseZ + (Math.random() - 0.5) * spread;
+      const a = Math.random() * Math.PI * 2, sp = power * (0.4 + Math.random() * 0.8);
+      svel[i * 3] = Math.cos(a) * sp; svel[i * 3 + 1] = power * 1.3 + Math.random() * power; svel[i * 3 + 2] = Math.sin(a) * sp;
+    };
+    for (let i = 0; i < count; i++) { reset(i); spos[i * 3 + 1] = y + Math.random() * 2; }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(spos, 3));
+    const pts = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.45, transparent: true, opacity: 0.9, depthWrite: false, sizeAttenuation: true }));
+    scene.add(pts); waterfallParts.push({ type: 'splash', geo, vel: svel, base: y, reset });
+  }
+  function makeLedge(x, y, r) {
+    const rk = new THREE.Mesh(roughen(new THREE.CylinderGeometry(r, r * 1.15, 1.6, 8), 0.28), toon('#5f655f'));
+    rk.position.set(x, y - 0.5, baseZ); rk.castShadow = true; addOutline(rk, 0.06); scene.add(rk);
+  }
 
-  // Genişleyen dalga halkaları
+  // --- Üç kademe: kaynaktan göle, her seferinde öne basamaklanır ----------
+  const yA = SRC, yB = lakeY + 32, yC = lakeY + 15, yD = lakeY - 0.5;
+  makeCurtain(yA, yB, 4.5, baseX - 2.4);                  // üst tier (dar)
+  makeCurtain(yB, yC, 6.0, baseX - 1.4);                  // orta tier
+  makeCurtain(yC, yD, 7.5, baseX - 0.3);                  // alt tier (geniş)
+  // ara havuzlar (kademe inişleri)
+  makeLedge(baseX - 1.8, yB, 2.6); makeFoam(baseX - 1.8, yB, 2.4); makeSplash(baseX - 1.8, yB, 26, 1.4, 2.4);
+  makeLedge(baseX - 0.8, yC, 3.1); makeFoam(baseX - 0.8, yC, 2.9); makeSplash(baseX - 0.8, yC, 30, 1.7, 2.6);
+
+  // --- Dip havuzu: büyük köpük + dalga halkaları + güçlü sıçrama ----------
+  makeFoam(baseX, lakeY, 6);
   const ripples = [];
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 5; i++) {
     const rg = new THREE.Mesh(
       new THREE.RingGeometry(0.85, 1.15, 36),
       new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, depthWrite: false }));
-    rg.rotation.x = -Math.PI / 2;
-    rg.position.set(baseX, lakeY + 0.07, baseZ);
-    scene.add(rg);
-    ripples.push({ mesh: rg, phase: i / 4 });
+    rg.rotation.x = -Math.PI / 2; rg.position.set(baseX, lakeY + 0.07, baseZ);
+    scene.add(rg); ripples.push({ mesh: rg, phase: i / 5 });
   }
   waterfallParts.push({ type: 'ripples', list: ripples });
+  makeSplash(baseX, lakeY, 90, 2.0, 3.6);
 
-  // Sıçrayan su damlaları (dibe çarpınca yukarı-dışa fışkırır)
-  const SN = 70;
-  const spos = new Float32Array(SN * 3), svel = new Float32Array(SN * 3);
-  const resetSplash = (i) => {
-    spos[i * 3] = baseX + (Math.random() - 0.5) * 1.6;
-    spos[i * 3 + 1] = lakeY + 0.2;
-    spos[i * 3 + 2] = baseZ + (Math.random() - 0.5) * 1.6;
-    const a = Math.random() * Math.PI * 2, sp = 1.4 + Math.random() * 2.8;
-    svel[i * 3] = Math.cos(a) * sp; svel[i * 3 + 1] = 3.2 + Math.random() * 3.5; svel[i * 3 + 2] = Math.sin(a) * sp;
-  };
-  for (let i = 0; i < SN; i++) { resetSplash(i); spos[i * 3 + 1] = lakeY + Math.random() * 3; }
-  const splashGeo = new THREE.BufferGeometry();
-  splashGeo.setAttribute('position', new THREE.BufferAttribute(spos, 3));
-  const splash = new THREE.Points(splashGeo, new THREE.PointsMaterial({
-    color: 0xffffff, size: 0.5, transparent: true, opacity: 0.9, depthWrite: false, sizeAttenuation: true,
-  }));
-  scene.add(splash);
-  waterfallParts.push({ type: 'splash', geo: splashGeo, vel: svel, base: lakeY, reset: resetSplash });
-
-  // Buhar (mist) parçacıkları
-  const N = 70;
+  // --- Tüm yüzey boyunca yükselen buhar sütunu ---------------------------
+  const N = 120;
   const pos = new Float32Array(N * 3);
   for (let i = 0; i < N; i++) {
-    pos[i * 3] = baseX + (Math.random() - 0.5) * 4;
-    pos[i * 3 + 1] = lakeY + Math.random() * 4;
-    pos[i * 3 + 2] = baseZ + (Math.random() - 0.5) * 4;
+    const t = Math.random();
+    pos[i * 3] = baseX - 1 + (Math.random() - 0.5) * 5;
+    pos[i * 3 + 1] = lakeY + t * 44;
+    pos[i * 3 + 2] = baseZ + (Math.random() - 0.5) * (5 + t * 4);
   }
   const mistGeo = new THREE.BufferGeometry();
   mistGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   const mist = new THREE.Points(mistGeo, new THREE.PointsMaterial({
-    color: 0xffffff, size: 1.7, transparent: true, opacity: 0.3, depthWrite: false, sizeAttenuation: true,
+    color: 0xffffff, size: 2.4, transparent: true, opacity: 0.22, depthWrite: false, sizeAttenuation: true,
   }));
   scene.add(mist);
-  waterfallParts.push({ type: 'mist', geo: mistGeo, base: lakeY });
+  waterfallParts.push({ type: 'mist', geo: mistGeo, base: lakeY, top: lakeY + 46 });
 }
 
 // ---- Instanced doğa: çimen kümeleri -----------------------------------
@@ -1810,7 +1859,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v77 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v78 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -2524,9 +2573,10 @@ function update(dt) {
       }
     } else if (wf.type === 'mist') {
       const p = wf.geo.attributes.position;
+      const ceil = wf.top ?? (wf.base + 5);
       for (let i = 0; i < p.count; i++) {
-        let y = p.getY(i) + dt * 1.4;
-        if (y > wf.base + 5) y = wf.base;
+        let y = p.getY(i) + dt * 1.6;
+        if (y > ceil) y = wf.base;
         p.setY(i, y);
       }
       p.needsUpdate = true;
