@@ -1502,7 +1502,7 @@ player.position.set(0, heightAt(0, 0), 0);
 scene.add(player);
 
 // ---- Meşale (gece elde taşınır, etrafı aydınlatır) --------------------
-let torchOn = false, torchLight = null, torchFlameMat = null, torchGroup = null;
+let torchOn = false, torchLight = null, torchFlameMat = null, torchGroup = null, torchHand = null;
 {
   const g = new THREE.Group();
   const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.95, 6), toon('#5a3a22'));
@@ -1526,7 +1526,7 @@ let torchOn = false, torchLight = null, torchFlameMat = null, torchGroup = null;
   torchLight = new THREE.PointLight('#ff8a3a', 0, 18, 2);
   torchLight.position.set(0.16, 0.85, 0); g.add(torchLight);
   g.position.set(0.55, 1.35, 0.4);        // sağ el, hafif önde
-  g.visible = false; player.add(g); torchGroup = g;
+  g.visible = false; scene.add(g); torchGroup = g;   // konumu her kare elden gelir, yönü dik kalır
 }
 function toggleTorch() { torchOn = !torchOn; torchGroup.visible = torchOn; }
 addEventListener('keydown', (e) => { if (!e.repeat && e.code === 'KeyM') toggleTorch(); });
@@ -1589,7 +1589,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v61 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v62 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1631,21 +1631,10 @@ const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v
 
     proc.visible = false;                 // yedek gövdeyi gizle
 
-    // Meşaleyi elin kemiğine tak → el hareketiyle birlikte hareket etsin
+    // Meşale: konumu el kemiğinden gelsin (yönü dik kalır)
     if (torchGroup) {
-      let handBone = null;
-      model.traverse((o) => { if (o.isBone && !handBone && /hand|wrist/i.test(o.name)) handBone = o; });
-      if (!handBone) model.traverse((o) => { if (o.isBone && !handBone && /arm|fore/i.test(o.name)) handBone = o; });
-      if (handBone) {
-        handBone.add(torchGroup);
-        handBone.updateWorldMatrix(true, false);
-        const ws = new THREE.Vector3();
-        handBone.getWorldScale(ws);                 // kemiğin GERÇEK dünya ölçeği
-        const avg = (ws.x + ws.y + ws.z) / 3 || 1;
-        torchGroup.scale.setScalar(1 / avg);        // dünya boyutu ~1m olacak şekilde
-        torchGroup.position.set(0, 0, 0);
-        torchGroup.rotation.set(0, 0, 0);
-      }
+      model.traverse((o) => { if (o.isBone && !torchHand && /hand|wrist/i.test(o.name)) torchHand = o; });
+      if (!torchHand) model.traverse((o) => { if (o.isBone && !torchHand && /arm|fore/i.test(o.name)) torchHand = o; });
     }
 
     // Animasyonlar
@@ -2511,10 +2500,18 @@ function update(dt) {
     if (rp.t > 1.3) { scene.remove(rp.mesh); rp.mesh.material.dispose(); lakeRipples.splice(i, 1); }
   }
 
-  // Meşale alevi + titreyen ışık
+  // Meşale: konumu elden al, dik tut; alev + titreyen ışık
   if (torchOn && torchFlameMat) {
     torchFlameMat.uniforms.time.value += dt;
     torchLight.intensity = 7 + Math.sin(elapsed * 20) * 2 + Math.sin(elapsed * 33) * 1;
+    if (torchHand) {
+      torchHand.updateWorldMatrix(true, false);
+      torchHand.getWorldPosition(torchGroup.position);
+    } else {
+      const fx = Math.sin(player.rotation.y), fz = Math.cos(player.rotation.y);
+      torchGroup.position.set(player.position.x + fx * 0.3 + fz * 0.45, player.position.y + 1.45, player.position.z + fz * 0.3 - fx * 0.45);
+    }
+    torchGroup.rotation.set(0, player.rotation.y, 0);   // her zaman dik (alev yukarı)
   }
 
   clouds.rotation.y += dt * 0.005;
