@@ -1548,16 +1548,20 @@ scene.add(player);
 let torchOn = false, torchLight = null, torchFlameMat = null, torchGroup = null, torchHand = null, torchBalloon = null;
 {
   const g = new THREE.Group();
-  // ip (elden balona)
-  const string = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1.0, 4), toon('#8a7a5a'));
-  string.position.y = 0.55; g.add(string);
+  // balon konumu: daha yüksek + yana/öne (ip gövdeden geçmesin)
+  const bpos = new THREE.Vector3(0.6, 2.2, 0.35);
+  // ip (elden balona, eğik)
+  const string = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, bpos.length(), 4), toon('#8a7a5a'));
+  string.position.copy(bpos).multiplyScalar(0.5);
+  string.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), bpos.clone().normalize());
+  g.add(string);
   // balon gövdesi (parlayan kağıt fener / ateş balonu)
   const balloonMat = new THREE.MeshToonMaterial({ color: '#ff9a4a', emissive: new THREE.Color('#ff7a2a'), emissiveIntensity: 1.3, gradientMap: ramp });
   torchBalloon = new THREE.Mesh(new THREE.SphereGeometry(0.34, 16, 14), balloonMat);
-  torchBalloon.scale.set(1, 1.25, 1); torchBalloon.position.y = 1.45; g.add(torchBalloon);
+  torchBalloon.scale.set(1, 1.25, 1); torchBalloon.position.copy(bpos); g.add(torchBalloon);
   // alt halka (ağız)
   const ring = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.03, 8, 16), toon('#6b4a30'));
-  ring.rotation.x = Math.PI / 2; ring.position.y = 1.12; g.add(ring);
+  ring.rotation.x = Math.PI / 2; ring.position.set(bpos.x, bpos.y - 0.33, bpos.z); g.add(ring);
   // içteki küçük alev
   torchFlameMat = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
@@ -1571,9 +1575,9 @@ let torchOn = false, torchLight = null, torchFlameMat = null, torchGroup = null,
       gl_FragColor = vec4(col, body * (0.5 + 0.5*smoothstep(0.5,0.0,abs(vUv.x-0.5)))); }`,
   });
   const flame = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.34, 8, 1, true), torchFlameMat);
-  flame.position.y = 1.28; g.add(flame);
+  flame.position.set(0.6, 2.05, 0.35); g.add(flame);
   torchLight = new THREE.PointLight('#ff9a4a', 0, 20, 2);
-  torchLight.position.y = 1.45; g.add(torchLight);
+  torchLight.position.set(0.6, 2.2, 0.35); g.add(torchLight);
   g.visible = false; scene.add(g); torchGroup = g;   // konumu her kare elden gelir
 }
 function toggleTorch() { torchOn = !torchOn; torchGroup.visible = torchOn; }
@@ -1637,7 +1641,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v65 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v66 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -2563,7 +2567,7 @@ function update(dt) {
       torchGroup.position.set(player.position.x + fx * 0.3 + fz * 0.45, player.position.y + 1.45, player.position.z + fz * 0.3 - fx * 0.45);
     }
     torchGroup.rotation.set(Math.sin(elapsed * 1.5) * 0.06, player.rotation.y, Math.sin(elapsed * 1.2) * 0.06);  // balon süzülür
-    if (torchBalloon) torchBalloon.position.y = 1.45 + Math.sin(elapsed * 2) * 0.04;
+    if (torchBalloon) torchBalloon.position.y = 2.2 + Math.sin(elapsed * 2) * 0.05;
   }
 
   clouds.rotation.y += dt * 0.005;
