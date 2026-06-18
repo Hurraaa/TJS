@@ -1589,7 +1589,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v62 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v63 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -2127,7 +2127,7 @@ function update(dt) {
 
   // Göl kıyısı: taş atma istemi
   const ld = Math.hypot(player.position.x - LAKE.x, player.position.z - LAKE.z);
-  nearLake = ld > LAKE.r - 2 && ld < LAKE.r + 6 && !sitting;
+  nearLake = ld > LAKE.r - 1.5 && ld < LAKE.r + 2.5 && !sitting;   // sadece su kenarında
   if (stoneBtnEl) stoneBtnEl.classList.toggle('show', nearLake);
   if (warmEl) {
     const atFire = sitting && sitSpot && sitSpot.type === 'fire';
