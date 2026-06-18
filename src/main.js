@@ -7,6 +7,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
@@ -1813,7 +1814,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v80 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v81 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -2918,12 +2919,9 @@ function update(dt) {
 }
 
 // ---- Post-processing --------------------------------------------------
-// MSAA'lı HDR (half-float) tampon: pürüzsüz kenarlar + bant'sız bloom/gradyan
-const _bufSize = renderer.getDrawingBufferSize(new THREE.Vector2());
-const _hdrRT = new THREE.WebGLRenderTarget(_bufSize.x, _bufSize.y, {
-  type: THREE.HalfFloatType, samples: 4,
-});
-const composer = new EffectComposer(renderer, _hdrRT);
+// Varsayılan (half-float) tampon — iOS Safari ile uyumlu. Kenar yumuşatma
+// için SMAA kullanılır (multisampled float tampon iOS'ta siyah ekrana yol açıyor).
+const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(
   new THREE.Vector2(window.innerWidth, window.innerHeight), 0.18, 0.6, 0.9); // güç, yarıçap, eşik
@@ -2944,6 +2942,8 @@ const gradePass = new ShaderPass({
     }`,
 });
 composer.addPass(gradePass);
+const smaa = new SMAAPass(window.innerWidth * renderer.getPixelRatio(), window.innerHeight * renderer.getPixelRatio());
+composer.addPass(smaa);
 composer.addPass(new OutputPass());
 
 function animate() {
