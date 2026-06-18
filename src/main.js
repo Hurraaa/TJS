@@ -1643,7 +1643,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v68 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v69 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -2557,10 +2557,12 @@ function update(dt) {
     torchLight.intensity = 8 + Math.sin(elapsed * 18) * 1.5 + Math.sin(elapsed * 30) * 0.8;
     // elin dünya konumu (gövde sağ-önü)
     const fx = Math.sin(player.rotation.y), fz = Math.cos(player.rotation.y);
-    _hand.set(player.position.x + fx * 0.22 + fz * 0.42, player.position.y + 1.35, player.position.z + fz * 0.22 - fx * 0.42);
-    // ısı ile yukarı çekilir (rest = el + yukarı) + hafif rüzgâr
+    // el: gövdeden belirgin şekilde sağ-ön dışarıda (ip gövdeye değmesin)
+    _hand.set(player.position.x + fx * 0.3 + fz * 0.72, player.position.y + 1.2, player.position.z + fz * 0.3 - fx * 0.72);
+    // ısı ile yukarı + biraz daha dışarı çekilir (ip gövdeden uzak dursun) + hafif rüzgâr
     _target.copy(_hand); _target.y += TORCH_L;
-    _target.x += Math.sin(elapsed * 0.9) * 0.12; _target.z += Math.cos(elapsed * 0.7) * 0.12;
+    _target.x += fz * 0.35 + Math.sin(elapsed * 0.9) * 0.12;
+    _target.z += -fx * 0.35 + Math.cos(elapsed * 0.7) * 0.12;
     if (!_balInit) { _balPos.copy(_target); _balVel.set(0, 0, 0); _balInit = true; }
     // yay kuvveti + sönüm
     _balVel.addScaledVector(_dir.copy(_target).sub(_balPos), 7 * dt);
