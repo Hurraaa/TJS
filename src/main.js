@@ -129,6 +129,10 @@ const glowMats = [];                           // gece parlayan malzemeler {mat,
 const lilies = [];                             // göl nilüferleri (hafif salınır)
 const dragonflies = [];                        // su üstünde uçan yusufçuklar
 const platforms = [];                          // {x,z,r,top} — üstünde yürünen yüzeyler (kum/teras)
+const appleTrees = [];                         // {x,z,apples:[],regrow,pickCd}
+let appleScore = 0;
+const appleCountEl = document.getElementById('appleCount');
+const _rainFog = new THREE.Color('#9aa6ad');
 function heightAt(x, z) {
   return Math.sin(x * 0.045) * 2.4 + Math.cos(z * 0.05) * 2.2
        + Math.sin((x + z) * 0.018) * 3.0
@@ -528,6 +532,92 @@ for (let i = 0; i < 3; i++) {
       }`,
   });
   scene.add(new THREE.Points(geo, petalsMat));
+}
+
+// ---- Sonbahar yaprakları (oyuncu çevresinde sürekli süzülerek düşer) --
+let leavesPts = null; const _leafN = 170; const _leafD = [];
+{
+  const pos = new Float32Array(_leafN * 3), col = new Float32Array(_leafN * 3);
+  const pal = [new THREE.Color('#d98a3a'), new THREE.Color('#c0584f'), new THREE.Color('#e0b24a'), new THREE.Color('#9a6a2a'), new THREE.Color('#c98a4a')];
+  for (let i = 0; i < _leafN; i++) {
+    pos[i * 3] = (Math.random() - 0.5) * 80; pos[i * 3 + 1] = Math.random() * 24; pos[i * 3 + 2] = (Math.random() - 0.5) * 80;
+    const c = pal[(Math.random() * pal.length) | 0]; col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+    _leafD.push({ phase: Math.random() * 6.28, sway: 0.6 + Math.random() * 1.4, fall: 1.1 + Math.random() * 1.3 });
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  leavesPts = new THREE.Points(g, new THREE.PointsMaterial({ size: 0.3, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false, sizeAttenuation: true }));
+  leavesPts.frustumCulled = false; scene.add(leavesPts);
+}
+
+// ---- Arılar (gündüz, çiçeklerin üstünde vızıldar) ---------------------
+let beesMat = null;
+{
+  const N = 26, pos = new Float32Array(N * 3), seed = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const x = (Math.random() - 0.5) * 120, z = (Math.random() - 0.5) * 120;
+    pos[i * 3] = x; pos[i * 3 + 1] = heightAt(x, z) + 0.8; pos[i * 3 + 2] = z; seed[i] = Math.random();
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
+  beesMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false,
+    uniforms: { time: { value: 0 }, day: { value: 1 } },
+    vertexShader: `attribute float aSeed; uniform float time; void main(){
+      vec3 p = position;
+      p.x += sin(time*2.0 + aSeed*6.28)*2.0 + sin(time*5.0+aSeed)*0.4;
+      p.y += sin(time*3.0 + aSeed*9.0)*0.5;
+      p.z += cos(time*2.2 + aSeed*7.0)*2.0;
+      vec4 mv = modelViewMatrix*vec4(p,1.0); gl_Position = projectionMatrix*mv;
+      gl_PointSize = 120.0/max(-mv.z,1.0);
+    }`,
+    fragmentShader: `uniform float day; void main(){
+      float d=length(gl_PointCoord-0.5); float a=smoothstep(0.5,0.1,d)*day;
+      gl_FragColor=vec4(vec3(1.0,0.85,0.2), a);
+    }`,
+  });
+  scene.add(new THREE.Points(geo, beesMat));
+}
+
+// ---- Kayan yıldız (gece ara sıra) -------------------------------------
+let shootStar = null, shootTimer = 10, shootT = -1;
+const _shootA = new THREE.Vector3(), _shootB = new THREE.Vector3();
+const wishMsgEl = document.getElementById('wishMsg');
+{
+  shootStar = new THREE.Group();
+  const head = new THREE.Mesh(new THREE.SphereGeometry(1.4, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false }));
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(1.0, 14, 8), new THREE.MeshBasicMaterial({ color: 0xcfe0ff, transparent: true, opacity: 0.6, fog: false, blending: THREE.AdditiveBlending, depthWrite: false }));
+  tail.rotation.x = -Math.PI / 2; tail.position.z = 7; shootStar.add(head, tail);
+  shootStar.visible = false; scene.add(shootStar);
+}
+
+// ---- Yağmur (buton/R; ıslaklık + sonrasında gökkuşağı) ----------------
+let rainOn = false, rainLines = null, rainAmt = 0, rainbowBoost = 0;
+const _rainN = 600, _rainSpd = [];
+{
+  const pos = new Float32Array(_rainN * 2 * 3);
+  for (let i = 0; i < _rainN; i++) {
+    const x = (Math.random() - 0.5) * 60, y = Math.random() * 30, z = (Math.random() - 0.5) * 60;
+    const len = 0.6 + Math.random() * 0.5;
+    pos[i * 6] = x; pos[i * 6 + 1] = y; pos[i * 6 + 2] = z;
+    pos[i * 6 + 3] = x; pos[i * 6 + 4] = y - len; pos[i * 6 + 5] = z;
+    _rainSpd.push(28 + Math.random() * 14);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  rainLines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: '#a9c2d6', transparent: true, opacity: 0.45 }));
+  rainLines.frustumCulled = false; rainLines.visible = false; scene.add(rainLines);
+}
+function toggleRain() { rainOn = !rainOn; }
+addEventListener('keydown', (e) => { if (!e.repeat && e.code === 'KeyR') toggleRain(); });
+{
+  const rb = document.getElementById('rainBtn');
+  if (rb) {
+    rb.addEventListener('click', () => { toggleRain(); rb.classList.toggle('active', rainOn); });
+    rb.addEventListener('touchstart', (e) => { toggleRain(); rb.classList.toggle('active', rainOn); e.preventDefault(); }, { passive: false });
+  }
 }
 
 // ---- Dağlar -----------------------------------------------------------
@@ -1293,17 +1383,30 @@ function makeBush() {
   return g;
 }
 const trees = new THREE.Group();
+const _appleGeo = new THREE.SphereGeometry(0.16, 8, 7);
+const _appleMat = toon('#e23b2e');
 for (let i = 0; i < 110; i++) {
   const x = (Math.random() - 0.5) * (WORLD - 24);
   const z = (Math.random() - 0.5) * (WORLD - 24);
   if (Math.abs(x) < 7 || nearBuilt(x, z, 3)) continue;
-  const t = Math.random() < 0.42 ? makePine() : makeRoundTree();
+  const round = Math.random() >= 0.42;
+  const t = round ? makeRoundTree() : makePine();
   t.position.set(x, heightAt(x, z), z);
   const ts = 0.7 + Math.random() * 0.8;
   t.scale.setScalar(ts);
   t.rotation.y = Math.random() * Math.PI;
   trees.add(t);
   colliders.push({ x, z, r: 0.9 * ts });       // gövde çarpışması
+  if (round && Math.random() < 0.35) {          // elma ağacı
+    const apples = [];
+    const n = 4 + (Math.random() * 3 | 0);
+    for (let q = 0; q < n; q++) {
+      const ap = new THREE.Mesh(_appleGeo, _appleMat);
+      ap.position.set((Math.random() - 0.5) * 2.4, 3.4 + Math.random() * 2.0, (Math.random() - 0.5) * 2.4);
+      ap.castShadow = true; t.add(ap); apples.push(ap);
+    }
+    appleTrees.push({ x, z, apples, regrow: 0, pickCd: 0 });
+  }
 }
 for (let i = 0; i < 40; i++) {                 // çalılar
   const x = (Math.random() - 0.5) * (WORLD - 18);
@@ -1653,7 +1756,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v74 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v75 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -2045,6 +2148,17 @@ function update(dt) {
   if (birdGain) birdGain.gain.value = (1 - nightAmount) * 0.45;
   if (cricketGain) cricketGain.gain.value = nightAmount * 0.55;
 
+  // Yağmur miktarı + karartma + sonrasında gökkuşağı
+  const ra0 = rainAmt;
+  rainAmt += ((rainOn ? 1 : 0) - rainAmt) * Math.min(1, dt * 0.8);
+  if (ra0 > 0.5 && rainAmt <= 0.5) rainbowBoost = 1;        // yağmur biterken gökkuşağı
+  rainbowBoost = Math.max(0, rainbowBoost - dt * 0.1);
+  if (rainAmt > 0.01) {
+    sun.intensity *= (1 - rainAmt * 0.7);
+    hemi.intensity *= (1 - rainAmt * 0.35);
+    scene.fog.color.lerp(_rainFog, rainAmt * 0.6);
+  }
+
   const run = keys['ShiftLeft'] || keys['ShiftRight'] || touchRun;
   const speed = run ? 11 : 6;
 
@@ -2434,7 +2548,7 @@ function update(dt) {
     auroraMats[i].uniforms.time.value += dt;
     auroraMats[i].uniforms.night.value = nightAmount;
   }
-  if (rainbowMat) rainbowMat.opacity = (1 - nightAmount) * 0.22;
+  if (rainbowMat) rainbowMat.opacity = (1 - nightAmount) * (0.22 + rainbowBoost * 0.55);
   if (petalsMat) { petalsMat.uniforms.time.value += dt; petalsMat.uniforms.day.value = 1 - nightAmount; }
 
   // NPC animasyonları
@@ -2653,6 +2767,87 @@ function update(dt) {
       arr[i * 3 + 2] = _hand.z + (_balPos.z - _hand.z) * t;
     }
     torchString.geometry.attributes.position.needsUpdate = true;
+  }
+
+  // --- Sonbahar yaprakları: süzülerek düş, oyuncu çevresinde geri dön ---
+  if (leavesPts) {
+    const a = leavesPts.geometry.attributes.position.array;
+    for (let i = 0; i < _leafN; i++) {
+      const d = _leafD[i];
+      a[i * 3 + 1] -= d.fall * dt;
+      a[i * 3] += Math.sin(elapsed * d.sway + d.phase) * dt * 0.6;
+      a[i * 3 + 2] += Math.cos(elapsed * d.sway * 0.8 + d.phase) * dt * 0.5;
+      if (a[i * 3 + 1] < heightAt(a[i * 3], a[i * 3 + 2]) + 0.1) {
+        a[i * 3] = player.position.x + (Math.random() - 0.5) * 70;
+        a[i * 3 + 2] = player.position.z + (Math.random() - 0.5) * 70;
+        a[i * 3 + 1] = 16 + Math.random() * 8;
+      }
+    }
+    leavesPts.geometry.attributes.position.needsUpdate = true;
+  }
+
+  // --- Arılar (gündüz görünür) -----------------------------------------
+  if (beesMat) { beesMat.uniforms.time.value += dt; beesMat.uniforms.day.value = 1 - nightAmount; }
+
+  // --- Kayan yıldız: gece ara sıra → "dilek tut" -----------------------
+  if (shootStar) {
+    if (shootT >= 0) {
+      shootT += dt / 1.3;
+      if (shootT >= 1) { shootT = -1; shootStar.visible = false; }
+      else shootStar.position.lerpVectors(_shootA, _shootB, shootT);
+    } else if (nightAmount > 0.55) {
+      shootTimer -= dt;
+      if (shootTimer <= 0) {
+        shootTimer = 22 + Math.random() * 32;
+        const ang = Math.random() * 6.28;
+        _shootA.set(player.position.x + Math.cos(ang) * 42, 56 + Math.random() * 14, player.position.z + Math.sin(ang) * 42);
+        _shootB.set(_shootA.x + (Math.random() - 0.5) * 64, 22 + Math.random() * 8, _shootA.z + (Math.random() - 0.5) * 64);
+        shootStar.position.copy(_shootA); shootStar.lookAt(_shootB);
+        shootStar.visible = true; shootT = 0;
+        if (wishMsgEl) { wishMsgEl.classList.add('show'); setTimeout(() => wishMsgEl.classList.remove('show'), 2600); }
+      }
+    }
+  }
+
+  // --- Yağmur parçacıkları ---------------------------------------------
+  if (rainLines) {
+    if (rainAmt > 0.02) {
+      rainLines.visible = true;
+      rainLines.material.opacity = 0.45 * rainAmt;
+      const a = rainLines.geometry.attributes.position.array;
+      for (let i = 0; i < _rainN; i++) {
+        const dy = _rainSpd[i] * dt;
+        a[i * 6 + 1] -= dy; a[i * 6 + 4] -= dy;
+        if (a[i * 6 + 1] < heightAt(a[i * 6], a[i * 6 + 2])) {
+          const x = player.position.x + (Math.random() - 0.5) * 55;
+          const z = player.position.z + (Math.random() - 0.5) * 55;
+          const len = 0.6 + Math.random() * 0.5, y = 22 + Math.random() * 10;
+          a[i * 6] = x; a[i * 6 + 1] = y; a[i * 6 + 2] = z;
+          a[i * 6 + 3] = x; a[i * 6 + 4] = y - len; a[i * 6 + 5] = z;
+        }
+      }
+      rainLines.geometry.attributes.position.needsUpdate = true;
+    } else rainLines.visible = false;
+  }
+
+  // --- Elma toplama (ağaca yaklaşınca topla, bir süre sonra yeniden çıkar) ---
+  for (let i = 0; i < appleTrees.length; i++) {
+    const at = appleTrees[i];
+    if (at.pickCd > 0) at.pickCd -= dt;
+    if (at.regrow > 0) {
+      at.regrow -= dt;
+      if (at.regrow <= 0) for (const ap of at.apples) ap.visible = true;
+      continue;
+    }
+    const dx = player.position.x - at.x, dz = player.position.z - at.z;
+    if (dx * dx + dz * dz < 9 && at.pickCd <= 0) {
+      const ap = at.apples.find((a) => a.visible);
+      if (ap) {
+        ap.visible = false; at.pickCd = 0.6; appleScore++;
+        if (appleCountEl) appleCountEl.textContent = '🍎 ' + appleScore;
+        if (!at.apples.some((a) => a.visible)) at.regrow = 18;
+      }
+    }
   }
 
   clouds.rotation.y += dt * 0.005;

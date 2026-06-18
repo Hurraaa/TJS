@@ -97,6 +97,30 @@
       border: 1px solid rgba(255,255,255,.7); box-shadow: 0 4px 14px rgba(0,0,0,.16);
     }
     #torchBtn.active { background: rgba(255,170,70,.9); }
+    /* Yağmur aç/kapa (sağ üst, meşale altında) */
+    #rainBtn {
+      position: fixed; right: 14px; top: 106px; z-index: 9;
+      width: 38px; height: 38px; border-radius: 50%; cursor: pointer; user-select: none;
+      display: grid; place-items: center; font-size: 18px;
+      background: rgba(255,255,255,.7); backdrop-filter: blur(6px);
+      border: 1px solid rgba(255,255,255,.7); box-shadow: 0 4px 14px rgba(0,0,0,.16);
+    }
+    #rainBtn.active { background: rgba(120,170,210,.9); }
+    /* Elma sayacı */
+    #appleCount {
+      position: fixed; left: 16px; top: 48px; z-index: 8;
+      font-family: ui-rounded, system-ui, sans-serif; font-weight: 700; font-size: 14px; color: #7a2f1a;
+      background: rgba(255,255,255,.7); backdrop-filter: blur(6px);
+      padding: 5px 11px; border-radius: 999px; box-shadow: 0 3px 10px rgba(0,0,0,.12);
+    }
+    /* Dilek mesajı */
+    #wishMsg {
+      position: fixed; top: 22%; left: 50%; transform: translate(-50%, -50%) scale(0.7); z-index: 9;
+      font-family: ui-rounded, system-ui, sans-serif; font-weight: 800; font-size: 22px; color: #fff;
+      text-shadow: 0 2px 12px rgba(0,0,0,.6), 0 0 18px rgba(150,180,255,.8);
+      opacity: 0; pointer-events: none; transition: opacity .4s ease, transform .4s ease;
+    }
+    #wishMsg.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
     #status {
       position: fixed; left: 16px; top: 14px; z-index: 8;
       font-family: ui-monospace, monospace; font-size: 12px;
@@ -206,6 +230,9 @@
   <div id="goalMsg">⚽ GOL!</div>
   <div id="infoBtn">i</div>
   <div id="torchBtn">🏮</div>
+  <div id="rainBtn">☔</div>
+  <div id="appleCount">🍎 0</div>
+  <div id="wishMsg">✨ Bir yıldız kaydı — dilek tut!</div>
 
   <div id="tod-bar">
     <span class="ic">🌙</span>
