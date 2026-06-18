@@ -280,6 +280,49 @@ let water = null;
   }
 }
 
+// ---- Ortam sesi: gündüz kuşlar, gece cırcır böcekleri -----------------
+let audioCtx = null, birdGain = null, cricketGain = null;
+function initAudio() {
+  if (audioCtx) { if (audioCtx.state === 'suspended') audioCtx.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+  audioCtx = new AC();
+  birdGain = audioCtx.createGain(); birdGain.gain.value = 0; birdGain.connect(audioCtx.destination);
+  cricketGain = audioCtx.createGain(); cricketGain.gain.value = 0; cricketGain.connect(audioCtx.destination);
+  // cırcır böcekleri — sürekli trill (kare LFO ile titreşen ton)
+  const cricket = (freq, depth, rate) => {
+    const osc = audioCtx.createOscillator(); osc.type = 'triangle'; osc.frequency.value = freq;
+    const g = audioCtx.createGain(); g.gain.value = 0;
+    const lfo = audioCtx.createOscillator(); lfo.type = 'square'; lfo.frequency.value = rate;
+    const lg = audioCtx.createGain(); lg.gain.value = depth;
+    lfo.connect(lg); lg.connect(g.gain);
+    osc.connect(g); g.connect(cricketGain);
+    osc.start(); lfo.start();
+  };
+  cricket(4600, 0.05, 22); cricket(5200, 0.035, 24.5);
+  // kuş cıvıltıları — rastgele aralıklı kısa kaymalar
+  const chirp = () => {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime, notes = 1 + (Math.random() * 3 | 0);
+    for (let i = 0; i < notes; i++) {
+      const ts = t + i * 0.12;
+      const o = audioCtx.createOscillator(); o.type = 'sine';
+      const g = audioCtx.createGain(); g.gain.value = 0;
+      o.connect(g); g.connect(birdGain);
+      const f0 = 1900 + Math.random() * 1600;
+      o.frequency.setValueAtTime(f0, ts);
+      o.frequency.linearRampToValueAtTime(f0 * 1.6, ts + 0.05);
+      o.frequency.linearRampToValueAtTime(f0 * 0.95, ts + 0.13);
+      g.gain.setValueAtTime(0, ts);
+      g.gain.linearRampToValueAtTime(0.1, ts + 0.02);
+      g.gain.linearRampToValueAtTime(0, ts + 0.16);
+      o.start(ts); o.stop(ts + 0.2);
+    }
+    setTimeout(chirp, 500 + Math.random() * 2500);
+  };
+  setTimeout(chirp, 800);
+}
+['pointerdown', 'keydown', 'touchstart'].forEach((ev) => addEventListener(ev, initAudio));
+
 // ---- Gece öğeleri: yıldızlar + ay + ay ışığı --------------------------
 const moonLight = new THREE.DirectionalLight('#9fb4e6', 0);
 scene.add(moonLight); scene.add(moonLight.target);
@@ -1589,7 +1632,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v63 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v64 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1983,6 +2026,9 @@ function update(dt) {
   else if (todTime <= 0) { todTime = 0; todDir = 1; dayCount++; }   // gün doğdu = yeni gün
   setTimeOfDay(todTime);
   if (todSliderEl) todSliderEl.value = String(todTime);
+  // Ortam sesi: gündüz kuş, gece cırcır
+  if (birdGain) birdGain.gain.value = (1 - nightAmount) * 0.45;
+  if (cricketGain) cricketGain.gain.value = nightAmount * 0.55;
 
   const run = keys['ShiftLeft'] || keys['ShiftRight'] || touchRun;
   const speed = run ? 11 : 6;
