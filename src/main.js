@@ -128,6 +128,7 @@ const colliders = [];                          // {x, z, r} — katı engeller (
 const glowMats = [];                           // gece parlayan malzemeler {mat, base, phase}
 const lilies = [];                             // göl nilüferleri (hafif salınır)
 const dragonflies = [];                        // su üstünde uçan yusufçuklar
+const platforms = [];                          // {x,z,r,top} — üstünde yürünen yüzeyler (kum/teras)
 function heightAt(x, z) {
   return Math.sin(x * 0.045) * 2.4 + Math.cos(z * 0.05) * 2.2
        + Math.sin((x + z) * 0.018) * 3.0
@@ -956,6 +957,7 @@ const VISTA = { x: -10, z: 40 };
   g.rotation.y = -Math.PI / 2;                 // grup +z'si manzaraya (-x) baksın
   scene.add(g);
 
+  platforms.push({ x: VISTA.x, z: VISTA.z, r: 2.1, top: vy + 0.18 });   // teras üstünde yürünür
   // Ahşap teras (planklı görünüm)
   const deck = new THREE.Mesh(roughen(new THREE.BoxGeometry(4.0, 0.24, 3.2, 8, 1, 1), 0.02), toon('#9c7a4e'));
   deck.position.y = 0.06; deck.receiveShadow = true; deck.castShadow = true; addOutline(deck, 0.03); g.add(deck);
@@ -1039,9 +1041,10 @@ const SWING = { x: 32, z: -34 };
 let swing = null, seesaw = null, slide = null;
 {
   const gy = heightAt(SWING.x, SWING.z);
-  // kumlu zemin
+  // kumlu zemin (üstünde yürünür → gömülme yok)
   const sand = new THREE.Mesh(new THREE.CylinderGeometry(8, 8, 0.18, 28), toon('#e7d2a4'));
   sand.position.set(SWING.x - 1, gy + 0.03, SWING.z); sand.receiveShadow = true; scene.add(sand);
+  platforms.push({ x: SWING.x - 1, z: SWING.z, r: 7.6, top: gy + 0.12 });
 
   const g = new THREE.Group(); g.position.set(SWING.x, gy, SWING.z); scene.add(g);
   const barH = 3.0, halfW = 1.6, ropeLen = 2.2, frameMat = toon('#7a5236');
@@ -1547,6 +1550,7 @@ scene.add(player);
 // ---- Ateş balonu (gece elde ipiyle; yaylı/sarkaç fizikle salınır) -----
 let torchOn = false, torchLight = null, torchFlameMat = null, torchBalloon = null, torchString = null;
 const TORCH_L = 2.4;                              // ip boyu (kola doğru uzun)
+const TORCH_STR_N = 16;                          // ip eğri nokta sayısı
 const _balPos = new THREE.Vector3(), _balVel = new THREE.Vector3();
 const _hand = new THREE.Vector3(), _target = new THREE.Vector3(), _dir = new THREE.Vector3(), _mid = new THREE.Vector3();
 const TORCH_UP = new THREE.Vector3(0, 1, 0);
@@ -1574,9 +1578,11 @@ let _balInit = false;
   flame.position.y = -0.15; torchBalloon.add(flame);
   torchLight = new THREE.PointLight('#ff9a4a', 0, 20, 2); torchBalloon.add(torchLight);
   torchBalloon.visible = false; scene.add(torchBalloon);
-  // ip (her kare elden balona güncellenir)
-  torchString = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1, 4), toon('#8a7a5a'));
-  torchString.visible = false; scene.add(torchString);
+  // ip (sarkan eğri — her kare güncellenir)
+  const sgeo = new THREE.BufferGeometry();
+  sgeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TORCH_STR_N * 3), 3));
+  torchString = new THREE.Line(sgeo, new THREE.LineBasicMaterial({ color: '#6f5f44' }));
+  torchString.visible = false; torchString.frustumCulled = false; scene.add(torchString);
 }
 function toggleTorch() {
   torchOn = !torchOn;
@@ -1643,7 +1649,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v70 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v71 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -2095,7 +2101,11 @@ function update(dt) {
   }
 
   // zıplama + yerçekimi
-  const groundY = heightAt(player.position.x, player.position.z);
+  let groundY = heightAt(player.position.x, player.position.z);
+  for (let pi = 0; pi < platforms.length; pi++) {       // kum/teras üstünde yürü
+    const pf = platforms[pi];
+    if ((player.position.x - pf.x) ** 2 + (player.position.z - pf.z) ** 2 < pf.r * pf.r) groundY = Math.max(groundY, pf.top);
+  }
   if ((keys['Space'] || touchJump) && grounded) { vy = 9; grounded = false; }
   vy -= 26 * dt;
   player.position.y += vy * dt;
@@ -2584,11 +2594,17 @@ function update(dt) {
     }
     // yerleştir (balon dik kalır; sadece konumu salınır)
     torchBalloon.position.copy(_balPos);
-    // ip: elden balona
-    _mid.copy(_hand).add(_balPos).multiplyScalar(0.5);
-    torchString.position.copy(_mid);
-    torchString.scale.y = TORCH_L;
-    torchString.quaternion.setFromUnitVectors(TORCH_UP, _dir.copy(_balPos).sub(_hand).normalize());
+    // ip: elden balona, ortadan AŞAĞI sarkan eğri (gevşek görünür)
+    const arr = torchString.geometry.attributes.position.array;
+    const horiz = Math.hypot(_balPos.x - _hand.x, _balPos.z - _hand.z);
+    const sag = 0.25 + horiz * 0.35 + Math.sin(elapsed * 2) * 0.03;   // yataydayken daha çok sarkar
+    for (let i = 0; i < TORCH_STR_N; i++) {
+      const t = i / (TORCH_STR_N - 1);
+      arr[i * 3] = _hand.x + (_balPos.x - _hand.x) * t;
+      arr[i * 3 + 1] = _hand.y + (_balPos.y - _hand.y) * t - sag * 4 * t * (1 - t);
+      arr[i * 3 + 2] = _hand.z + (_balPos.z - _hand.z) * t;
+    }
+    torchString.geometry.attributes.position.needsUpdate = true;
   }
 
   clouds.rotation.y += dt * 0.005;
