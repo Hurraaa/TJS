@@ -6,6 +6,7 @@ import { Water } from 'three/addons/objects/Water.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
@@ -71,11 +72,13 @@ scene.add(hemi);
 const sun = new THREE.DirectionalLight('#ffe2b0', 2.3);  // sıcak güneş
 sun.position.set(60, 90, 40);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.set(3072, 3072);            // daha keskin gölge
 sun.shadow.camera.near = 1; sun.shadow.camera.far = 300;
 const sc = sun.shadow.camera;
 sc.left = -90; sc.right = 90; sc.top = 90; sc.bottom = -90;
-sun.shadow.bias = -0.0004;
+sun.shadow.bias = -0.0003;
+sun.shadow.normalBias = 0.025;                  // gölge akmasını/çizgilenmeyi azalt
+sun.shadow.radius = 3;                          // PCF yumuşak kenar
 scene.add(sun);
 scene.add(sun.target);
 
@@ -237,9 +240,9 @@ let water = null;
 {
   const waterNormals = new THREE.TextureLoader().load(
     'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/textures/waternormals.jpg',
-    (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; });
-  water = new Water(new THREE.CircleGeometry(LAKE.r, 56), {
-    textureWidth: 512, textureHeight: 512, waterNormals,
+    (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); });
+  water = new Water(new THREE.CircleGeometry(LAKE.r, 72), {
+    textureWidth: 1024, textureHeight: 1024, waterNormals,
     sunDirection: SUN_DIR.clone().normalize(), sunColor: 0xffffff,
     waterColor: 0x3d6e8c, distortionScale: 2.2, fog: !!scene.fog,
   });
@@ -1810,7 +1813,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v79 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v80 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -2914,12 +2917,33 @@ function update(dt) {
   clouds.rotation.y += dt * 0.005;
 }
 
-// ---- Post-processing: hafif bloom (güneş/su parıltısı) ----------------
-const composer = new EffectComposer(renderer);
+// ---- Post-processing --------------------------------------------------
+// MSAA'lı HDR (half-float) tampon: pürüzsüz kenarlar + bant'sız bloom/gradyan
+const _bufSize = renderer.getDrawingBufferSize(new THREE.Vector2());
+const _hdrRT = new THREE.WebGLRenderTarget(_bufSize.x, _bufSize.y, {
+  type: THREE.HalfFloatType, samples: 4,
+});
+const composer = new EffectComposer(renderer, _hdrRT);
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(
   new THREE.Vector2(window.innerWidth, window.innerHeight), 0.18, 0.6, 0.9); // güç, yarıçap, eşik
 composer.addPass(bloom);
+
+// Hafif "suluboya" renk derecelendirme: doygunluk + ince kontrast (lineer uzayda)
+const gradePass = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, sat: { value: 1.1 }, con: { value: 1.06 } },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float sat; uniform float con; varying vec2 vUv;
+    void main(){
+      vec4 c = texture2D(tDiffuse, vUv);
+      float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+      vec3 col = mix(vec3(l), c.rgb, sat);        // doygunluk
+      col = (col - 0.18) * con + 0.18;            // ince kontrast (lineer orta gri)
+      gl_FragColor = vec4(max(col, 0.0), c.a);
+    }`,
+});
+composer.addPass(gradePass);
 composer.addPass(new OutputPass());
 
 function animate() {
