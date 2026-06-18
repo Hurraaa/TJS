@@ -1589,7 +1589,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v60 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v61 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -1637,11 +1637,14 @@ const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v
       model.traverse((o) => { if (o.isBone && !handBone && /hand|wrist/i.test(o.name)) handBone = o; });
       if (!handBone) model.traverse((o) => { if (o.isBone && !handBone && /arm|fore/i.test(o.name)) handBone = o; });
       if (handBone) {
-        const inv = 1 / (model.scale.x || 1);       // kemik dünya ölçeğini geri al
-        torchGroup.scale.setScalar(inv);
+        handBone.add(torchGroup);
+        handBone.updateWorldMatrix(true, false);
+        const ws = new THREE.Vector3();
+        handBone.getWorldScale(ws);                 // kemiğin GERÇEK dünya ölçeği
+        const avg = (ws.x + ws.y + ws.z) / 3 || 1;
+        torchGroup.scale.setScalar(1 / avg);        // dünya boyutu ~1m olacak şekilde
         torchGroup.position.set(0, 0, 0);
         torchGroup.rotation.set(0, 0, 0);
-        handBone.add(torchGroup);
       }
     }
 
