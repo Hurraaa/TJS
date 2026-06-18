@@ -1653,7 +1653,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v72 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v73 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -2152,14 +2152,16 @@ function update(dt) {
   if (seesaw) {
     const playerRiding = sitting && sitSpot && sitSpot.type === 'seesaw';
     if (playerRiding) {
-      // karşı uca çocuk çağır
+      // karşı uca EN YAKIN boş çocuğu hemen çağır
       if (!seesaw.rider) {
-        seesaw.timer -= dt;
-        if (seesaw.timer <= 0 && kids.length) {
-          const k = kids[(Math.random() * kids.length) | 0];
-          if (k.mode === 'play') { seesaw.rider = k; k.mode = 'toSeesaw'; }
-          seesaw.timer = 3;
+        let best = null, bd = 1e9;
+        for (let ki = 0; ki < kids.length; ki++) {
+          const k = kids[ki];
+          if (k.mode !== 'play') continue;
+          const d = (k.g.position.x - seesaw.x) ** 2 + (k.g.position.z - seesaw.z) ** 2;
+          if (d < bd) { bd = d; best = k; }
         }
+        if (best) { seesaw.rider = best; best.mode = 'toSeesaw'; }
       }
     } else if (seesaw.rider) { seesaw.rider.mode = 'play'; seesaw.rider = null; }
     if (seesaw.rider && seesaw.rider.mode !== 'toSeesaw' && seesaw.rider.mode !== 'onSeesaw') seesaw.rider = null;
