@@ -1653,7 +1653,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v73 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v74 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -2167,8 +2167,13 @@ function update(dt) {
     if (seesaw.rider && seesaw.rider.mode !== 'toSeesaw' && seesaw.rider.mode !== 'onSeesaw') seesaw.rider = null;
 
     const bothSeated = playerRiding && seesaw.rider && seesaw.rider.mode === 'onSeesaw';
-    const amp = bothSeated ? 0.34 : (playerRiding ? 0.12 : 0.14);
-    const a = amp * Math.sin(elapsed * (bothSeated ? 1.7 : 1.2));
+    let targetA;
+    if (bothSeated) targetA = 0.34 * Math.sin(elapsed * 1.7);   // ikisi oturunca sallan
+    else if (playerRiding) targetA = -0.26;                     // oyuncu binili, bekliyor (ucu aşağıda)
+    else targetA = 0.12 * Math.sin(elapsed * 1.1);              // boşken hafif esinti
+    if (seesaw.aCur === undefined) seesaw.aCur = 0;
+    seesaw.aCur += (targetA - seesaw.aCur) * Math.min(1, dt * 5);
+    const a = seesaw.aCur;
     seesaw.pivot.rotation.z = a;
     const yb = seesaw.gy + seesaw.pvY;
     if (playerRiding) {                               // oyuncu +x ucunda
