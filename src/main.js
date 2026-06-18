@@ -1085,8 +1085,12 @@ let swing = null, seesaw = null, slide = null;
     const seatb = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.1, 0.5), toon(seatCols[s]));
     seatb.position.set(ex, 0.13, 0); addOutline(seatb, 0.03); pv.add(seatb);
   }
-  seesaw = pv;
-  colliders.push({ x: sx, z: sz, r: 1.4 });
+  seesaw = { pivot: pv, x: sx, z: sz, gy: sgy, pvY: 0.85, endX: 2, rider: null, timer: 4 };
+  // oyuncu binebilsin (+x ucu), karşısına çocuk gelir
+  SITSPOTS.push({
+    x: sx + 2, z: sz, type: 'seesaw', snap: true, range: 2.4, lift: 0,
+    face: { x: sx - 2, z: sz }, look: new THREE.Vector3(sx, sgy + 1.2, sz), back: 6,
+  });
 
   // Kaydırak (tepeden +z yönüne iner)
   const klx = SWING.x - 7, klz = SWING.z + 1, klgy = heightAt(klx, klz);
@@ -1649,7 +1653,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v71 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v72 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -2144,7 +2148,35 @@ function update(dt) {
       if (occ) { occ.g.position.set(swing.x, swing.gy + yOff + 0.05, swing.z + zOff); occ.g.rotation.set(ang, 0, 0); }
     }
   }
-  if (seesaw) seesaw.rotation.z = 0.16 * Math.sin(elapsed * 1.3);   // tahterevalli sallanır
+  // Tahterevalli: oyuncu bir uca biner, karşı uca bir çocuk gelir, inip kalkarlar
+  if (seesaw) {
+    const playerRiding = sitting && sitSpot && sitSpot.type === 'seesaw';
+    if (playerRiding) {
+      // karşı uca çocuk çağır
+      if (!seesaw.rider) {
+        seesaw.timer -= dt;
+        if (seesaw.timer <= 0 && kids.length) {
+          const k = kids[(Math.random() * kids.length) | 0];
+          if (k.mode === 'play') { seesaw.rider = k; k.mode = 'toSeesaw'; }
+          seesaw.timer = 3;
+        }
+      }
+    } else if (seesaw.rider) { seesaw.rider.mode = 'play'; seesaw.rider = null; }
+    if (seesaw.rider && seesaw.rider.mode !== 'toSeesaw' && seesaw.rider.mode !== 'onSeesaw') seesaw.rider = null;
+
+    const bothSeated = playerRiding && seesaw.rider && seesaw.rider.mode === 'onSeesaw';
+    const amp = bothSeated ? 0.34 : (playerRiding ? 0.12 : 0.14);
+    const a = amp * Math.sin(elapsed * (bothSeated ? 1.7 : 1.2));
+    seesaw.pivot.rotation.z = a;
+    const yb = seesaw.gy + seesaw.pvY;
+    if (playerRiding) {                               // oyuncu +x ucunda
+      player.position.set(seesaw.x + seesaw.endX * Math.cos(a), yb + seesaw.endX * Math.sin(a) + 0.2, seesaw.z);
+    }
+    if (seesaw.rider && seesaw.rider.mode === 'onSeesaw') {   // çocuk -x ucunda
+      seesaw.rider.g.position.set(seesaw.x - seesaw.endX * Math.cos(a), yb - seesaw.endX * Math.sin(a) + 0.1, seesaw.z);
+      seesaw.rider.g.rotation.set(0, Math.PI / 2, 0);         // merkeze (oyuncuya) bak
+    }
+  }
 
   // Kaydırak: tepeden dibe kay (bacaklar uzanmış, sırt yaslı)
   if (slide && sitting && sitSpot && sitSpot.type === 'slide') {
@@ -2179,7 +2211,7 @@ function update(dt) {
     if (sitting) { sitPromptEl.textContent = '🧍 Kalk'; sitPromptEl.classList.add('show'); }
     else if (nearSit) {
       sitPromptEl.textContent = nearSit.type === 'vista' ? '🌄 Otur'
-        : (nearSit.type === 'swing' ? '🪅 Sallan' : (nearSit.type === 'slide' ? '🛝 Kay' : '🔥 Otur'));
+        : (nearSit.type === 'swing' ? '🪅 Sallan' : (nearSit.type === 'slide' ? '🛝 Kay' : (nearSit.type === 'seesaw' ? '⚖️ Bin' : '🔥 Otur')));
       sitPromptEl.classList.add('show');
     }
     else sitPromptEl.classList.remove('show');
@@ -2246,6 +2278,12 @@ function update(dt) {
     const mid = slide.topPos.clone().lerp(slide.botPos, 0.5);
     camera.position.lerp(new THREE.Vector3(mid.x + 8, mid.y + 3, mid.z), 1 - Math.pow(0.004, dt));
     camTarget.lerp(mid, 1 - Math.pow(0.004, dt));
+    camera.lookAt(camTarget);
+    camYaw = Math.atan2(camera.position.x - player.position.x, camera.position.z - player.position.z);
+  } else if (sitting && sitSpot && sitSpot.type === 'seesaw' && seesaw) {
+    // Tahterevalli: yan kamera (ikisini de gösterir, +z'den)
+    camera.position.lerp(new THREE.Vector3(seesaw.x, seesaw.gy + 3, seesaw.z + 9), 1 - Math.pow(0.004, dt));
+    camTarget.lerp(new THREE.Vector3(seesaw.x, seesaw.gy + 1.2, seesaw.z), 1 - Math.pow(0.004, dt));
     camera.lookAt(camTarget);
     camYaw = Math.atan2(camera.position.x - player.position.x, camera.position.z - player.position.z);
   } else if (sitting && sitSpot) {
@@ -2418,8 +2456,8 @@ function update(dt) {
     }
     if (k.mode === 'home') continue;                  // evde (gizli)
 
-    // Salıncakta: hareket etme, sadece sallan (konum salıncak bloğunda ayarlanır)
-    if (k.mode === 'swinging') { setKidAnim(k, 'idle'); k.mx.update(dt); continue; }
+    // Salıncak/tahterevallide: hareket etme (konum ilgili blokta ayarlanır)
+    if (k.mode === 'swinging' || k.mode === 'onSeesaw') { setKidAnim(k, 'idle'); k.mx.update(dt); continue; }
 
     k.g.rotation.x = 0;                              // salıncaktan kalkınca eğimi sıfırla
     setKidAnim(k, 'run');
@@ -2427,6 +2465,8 @@ function update(dt) {
       k.tx = k.home[0]; k.tz = k.home[1] + 3;
     } else if (k.mode === 'toSwing') {                // salıncağa yürü
       k.tx = SWING.x; k.tz = SWING.z;
+    } else if (k.mode === 'toSeesaw') {               // tahterevallinin karşı ucuna yürü
+      k.tx = seesaw.x - seesaw.endX; k.tz = seesaw.z;
     } else {
       k.retarget -= dt;
       if (k.retarget <= 0) {
@@ -2451,6 +2491,7 @@ function update(dt) {
       k.g.position.z = THREE.MathUtils.clamp(k.g.position.z + dz * 6.5 * dt, -klim, klim);
       k.g.rotation.y = Math.atan2(dx, dz);
     } else if (k.mode === 'toSwing') { k.mode = 'swinging'; }   // salıncağa vardı
+    else if (k.mode === 'toSeesaw') { k.mode = 'onSeesaw'; }    // tahterevalliye vardı
     else if (k.mode === 'goHome') { k.g.visible = false; k.mode = 'home'; }  // eve girdi
     else { k.retarget = 0; }
     // zıplama
