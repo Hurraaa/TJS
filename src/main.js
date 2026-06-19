@@ -30,7 +30,7 @@ document.getElementById('app').appendChild(renderer.domElement);
 
 // ---- Scene & atmosphere -----------------------------------------------
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog('#cfe6e0', 90, 384);
+scene.fog = new THREE.Fog('#cfe6e0', 95, 460);
 
 // Gökyüzü (three.js Sky) — günün saati setTimeOfDay() ile ayarlanır
 const SUN_DIR = new THREE.Vector3();
@@ -127,7 +127,7 @@ function roughen(geo, amount = 0.12) {
 }
 
 // ---- Zemin (yumuşak tepeler) ------------------------------------------
-const WORLD = 300;        // dünya boyutu — kademeli büyütülüyor (instancing sayesinde ucuz)
+const WORLD = 360;        // dünya boyutu — kademeli büyütülüyor (instancing sayesinde ucuz)
 const colliders = [];                          // {x, z, r} — katı engeller (çarpışma)
 const glowMats = [];                           // gece parlayan malzemeler {mat, base, phase}
 const lilies = [];                             // göl nilüferleri (hafif salınır)
@@ -894,7 +894,7 @@ function scatterGrass(count = 4000) {
   mesh.instanceMatrix.needsUpdate = true;
   return mesh;
 }
-scene.add(scatterGrass(8600));
+scene.add(scatterGrass(13000));
 
 // ---- Çiçekler (sap + göbek + yapraklar, vertex renkli) ----------------
 function paintGeo(geo, hex) {
@@ -938,7 +938,7 @@ function scatterFlowers(petalHex, count) {
   mesh.count = n; mesh.instanceMatrix.needsUpdate = true;
   return mesh;
 }
-['#ff7aa2', '#ffe14d', '#ffffff', '#b88cff', '#ff9e5e'].forEach((c) => scene.add(scatterFlowers(c, 160)));
+['#ff7aa2', '#ffe14d', '#ffffff', '#b88cff', '#ff9e5e'].forEach((c) => scene.add(scatterFlowers(c, 210)));
 
 // ---- Kelebekler -------------------------------------------------------
 const butterflies = [];
@@ -1440,57 +1440,186 @@ function makeBush() {
   }
   return g;
 }
-const trees = new THREE.Group();
-const _appleGeo = new THREE.SphereGeometry(0.16, 8, 7);
-const _appleMat = toon('#e23b2e');
-for (let i = 0; i < 145; i++) {
+// ---- Instanced orman: binlerce ağaç/çalı/kaya ~12 draw call ile --------
+// Her tür için TEK birleşik geometri (vertex renkli) + InstancedMesh gövde +
+// InstancedMesh mürekkep konturu. Rüzgâr CPU yerine shader'da (bedava salınım).
+const windUniform = { value: 0 };
+function bakeColor(geo, hex, vary = 0) {
+  const g = geo.index ? geo.toNonIndexed() : geo;
+  const c = new THREE.Color(hex);
+  const n = g.attributes.position.count, arr = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const v = 1 - Math.random() * vary;
+    arr[i * 3] = c.r * v; arr[i * 3 + 1] = c.g * v; arr[i * 3 + 2] = c.b * v;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+  return g;
+}
+function buildRoundTreeGeo() {
+  const parts = [];
+  const tr = roughen(new THREE.CylinderGeometry(0.35, 0.55, 3.2, 6), 0.08); tr.translate(0, 1.6, 0);
+  parts.push(bakeColor(tr, '#8a5a3b', 0.12));
+  const greens = ['#5ea24c', '#6cb85a', '#4f9440'];
+  for (let i = 0; i < 4; i++) {
+    const r = 1.4 + Math.random() * 1.0;
+    const b = roughen(new THREE.IcosahedronGeometry(r, 1), r * 0.16);
+    b.translate((Math.random() - 0.5) * 2.2, 3.4 + Math.random() * 2.0, (Math.random() - 0.5) * 2.2);
+    parts.push(bakeColor(b, greens[i % 3], 0.16));
+  }
+  return mergeGeometries(parts);
+}
+function buildPineGeo() {
+  const parts = [];
+  const tr = roughen(new THREE.CylinderGeometry(0.22, 0.4, 1.8, 6), 0.06); tr.translate(0, 0.9, 0);
+  parts.push(bakeColor(tr, '#7a5236', 0.12));
+  const greens = ['#3f7d3a', '#4a8c43', '#356b32'];
+  for (let i = 0; i < 4; i++) {
+    const r = 2.1 - i * 0.42;
+    const co = roughen(new THREE.ConeGeometry(r, 1.7, 7), r * 0.12); co.translate(0, 1.7 + i * 1.05, 0);
+    parts.push(bakeColor(co, greens[i % 3], 0.14));
+  }
+  return mergeGeometries(parts);
+}
+function buildBushGeo() {
+  const parts = [], c = ['#5aa34a', '#6cb85a'];
+  for (let i = 0; i < 3; i++) {
+    const r = 0.6 + Math.random() * 0.5;
+    const b = roughen(new THREE.IcosahedronGeometry(r, 1), r * 0.18);
+    b.translate((Math.random() - 0.5) * 1.2, 0.4 + Math.random() * 0.3, (Math.random() - 0.5) * 1.2);
+    parts.push(bakeColor(b, c[i % 2], 0.16));
+  }
+  return mergeGeometries(parts);
+}
+function buildRockGeo() {
+  return bakeColor(roughen(new THREE.DodecahedronGeometry(1, 0), 0.22), '#9aa0a6', 0.18);
+}
+// Gövde malzemesi: toon + vertex renk + shader rüzgârı (sadece instanced'larda)
+const windBodyMat = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: ramp });
+windBodyMat.onBeforeCompile = (sh) => {
+  sh.uniforms.uWindTime = windUniform;
+  sh.vertexShader = 'uniform float uWindTime;\n' + sh.vertexShader.replace(
+    '#include <begin_vertex>',
+    `#include <begin_vertex>
+     #ifdef USE_INSTANCING
+       vec3 _ip = instanceMatrix[3].xyz;
+       float _ph = _ip.x * 0.6 + _ip.z * 0.6;
+       float _sw = max(transformed.y, 0.0);
+       transformed.x += sin(uWindTime * 1.1 + _ph) * _sw * 0.045;
+       transformed.z += cos(uWindTime * 0.8 + _ph) * _sw * 0.040;
+     #endif`);
+};
+const staticBodyMat = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: ramp });
+// Instanced mürekkep konturu (BackSide şişirme), istenirse shader rüzgârı
+function inkInstancedMat(thickness, wind) {
+  return new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    uniforms: { thickness: { value: thickness }, inkColor: { value: INK }, uWindTime: windUniform },
+    vertexShader: `
+      uniform float thickness; uniform float uWindTime;
+      void main(){
+        vec3 t = position + normalize(normal) * thickness;
+        #ifdef USE_INSTANCING
+          ${wind ? `
+          vec3 _ip = instanceMatrix[3].xyz;
+          float _ph = _ip.x * 0.6 + _ip.z * 0.6;
+          float _sw = max(position.y, 0.0);
+          t.x += sin(uWindTime * 1.1 + _ph) * _sw * 0.045;
+          t.z += cos(uWindTime * 0.8 + _ph) * _sw * 0.040;` : ``}
+          gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(t, 1.0);
+        #else
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(t, 1.0);
+        #endif
+      }`,
+    fragmentShader: `uniform vec3 inkColor; void main(){ gl_FragColor = vec4(inkColor, 1.0); }`,
+  });
+}
+const _windInk6 = inkInstancedMat(0.06, true);   // ağaçlar
+const _windInk5 = inkInstancedMat(0.05, true);   // çalılar
+const _staticInk5 = inkInstancedMat(0.05, false);// kayalar
+const _idummy = new THREE.Object3D();
+function addInstancedType(geo, bodyMat, outlineMat, placements) {
+  if (!placements.length) return;
+  const body = new THREE.InstancedMesh(geo, bodyMat, placements.length);
+  body.castShadow = true; body.receiveShadow = true; body.frustumCulled = false;
+  const out = new THREE.InstancedMesh(geo, outlineMat, placements.length);
+  out.castShadow = false; out.receiveShadow = false; out.frustumCulled = false;
+  for (let i = 0; i < placements.length; i++) {
+    const p = placements[i];
+    _idummy.position.set(p.x, p.y, p.z);
+    _idummy.rotation.set(p.rx || 0, p.ry || 0, p.rz || 0);
+    _idummy.scale.setScalar(p.s);
+    _idummy.updateMatrix();
+    body.setMatrixAt(i, _idummy.matrix); out.setMatrixAt(i, _idummy.matrix);
+  }
+  body.instanceMatrix.needsUpdate = true; out.instanceMatrix.needsUpdate = true;
+  scene.add(out); scene.add(body);
+}
+
+// Yerleşimleri üret (2 yuvarlak + 2 çam varyantı → tekrar hissi azalır)
+const roundP = [[], []], pineP = [[], []];
+for (let i = 0; i < 1100; i++) {
   const x = (Math.random() - 0.5) * (WORLD - 24);
   const z = (Math.random() - 0.5) * (WORLD - 24);
   if (Math.abs(x) < 7 || nearBuilt(x, z, 3)) continue;
-  const round = Math.random() >= 0.42;
-  const t = round ? makeRoundTree() : makePine();
-  t.position.set(x, heightAt(x, z), z);
-  const ts = 0.7 + Math.random() * 0.8;
-  t.scale.setScalar(ts);
-  t.rotation.y = Math.random() * Math.PI;
-  trees.add(t);
-  colliders.push({ x, z, r: 0.9 * ts });       // gövde çarpışması
-  if (round && Math.random() < 0.35) {          // elma ağacı
-    const apples = [];
-    const n = 4 + (Math.random() * 3 | 0);
+  const s = 0.7 + Math.random() * 0.85, ry = Math.random() * Math.PI, y = heightAt(x, z);
+  const vIdx = Math.random() < 0.5 ? 0 : 1;
+  (Math.random() >= 0.42 ? roundP : pineP)[vIdx].push({ x, y, z, s, ry });
+  colliders.push({ x, z, r: 0.9 * s });
+}
+addInstancedType(buildRoundTreeGeo(), windBodyMat, _windInk6, roundP[0]);
+addInstancedType(buildRoundTreeGeo(), windBodyMat, _windInk6, roundP[1]);
+addInstancedType(buildPineGeo(), windBodyMat, _windInk6, pineP[0]);
+addInstancedType(buildPineGeo(), windBodyMat, _windInk6, pineP[1]);
+
+// Çalılar (instanced)
+const bushP = [];
+for (let i = 0; i < 480; i++) {
+  const x = (Math.random() - 0.5) * (WORLD - 18);
+  const z = (Math.random() - 0.5) * (WORLD - 18);
+  if (Math.abs(x) < 5 || nearBuilt(x, z, 1)) continue;
+  bushP.push({ x, y: heightAt(x, z), z, s: 0.7 + Math.random() * 0.7, ry: Math.random() * Math.PI });
+}
+addInstancedType(buildBushGeo(), windBodyMat, _windInk5, bushP);
+
+// Kayalar (instanced, rüzgârsız)
+const rockP = [];
+for (let i = 0; i < 320; i++) {
+  const x = (Math.random() - 0.5) * (WORLD - 20);
+  const z = (Math.random() - 0.5) * (WORLD - 20);
+  if (nearBuilt(x, z, 2)) continue;
+  const s = 0.6 + Math.random() * 1.4;
+  rockP.push({ x, y: heightAt(x, z) + s * 0.3, z, s, rx: Math.random(), ry: Math.random(), rz: Math.random() });
+  if (s > 0.9) colliders.push({ x, z, r: s * 0.85 });
+}
+addInstancedType(buildRockGeo(), staticBodyMat, _staticInk5, rockP);
+
+// ---- Elma ağaçları (etkileşimli — instanced değil, az sayıda) ----------
+const trees = new THREE.Group();
+const _appleGeo = new THREE.SphereGeometry(0.16, 8, 7);
+const _appleMat = toon('#e23b2e');
+{
+  let made = 0, tries = 0;
+  while (made < 18 && tries < 600) {
+    tries++;
+    const x = (Math.random() - 0.5) * (WORLD - 40);
+    const z = (Math.random() - 0.5) * (WORLD - 40);
+    if (Math.abs(x) < 8 || nearBuilt(x, z, 3)) continue;
+    const t = makeRoundTree();
+    const s = 0.9 + Math.random() * 0.5;
+    t.position.set(x, heightAt(x, z), z); t.scale.setScalar(s); t.rotation.y = Math.random() * Math.PI;
+    trees.add(t);
+    colliders.push({ x, z, r: 0.9 * s });
+    const apples = [], n = 4 + (Math.random() * 3 | 0);
     for (let q = 0; q < n; q++) {
       const ap = new THREE.Mesh(_appleGeo, _appleMat);
       ap.position.set((Math.random() - 0.5) * 2.4, 3.4 + Math.random() * 2.0, (Math.random() - 0.5) * 2.4);
       ap.castShadow = true; t.add(ap); apples.push(ap);
     }
     appleTrees.push({ x, z, apples, regrow: 0, pickCd: 0 });
+    made++;
   }
 }
-for (let i = 0; i < 54; i++) {                 // çalılar
-  const x = (Math.random() - 0.5) * (WORLD - 18);
-  const z = (Math.random() - 0.5) * (WORLD - 18);
-  if (Math.abs(x) < 5 || nearBuilt(x, z, 1)) continue;
-  const b = makeBush();
-  b.position.set(x, heightAt(x, z), z);
-  b.scale.setScalar(0.7 + Math.random() * 0.7);
-  trees.add(b);
-}
 scene.add(trees);
-
-// ---- Kayalar -----------------------------------------------------------
-for (let i = 0; i < 54; i++) {
-  const x = (Math.random() - 0.5) * (WORLD - 20);
-  const z = (Math.random() - 0.5) * (WORLD - 20);
-  if (nearBuilt(x, z, 2)) continue;
-  const rr = 0.6 + Math.random() * 1.4;
-  const rock = new THREE.Mesh(roughen(new THREE.DodecahedronGeometry(rr, 0), rr * 0.22), toon('#9aa0a6'));
-  rock.position.set(x, heightAt(x, z) + 0.2, z);
-  rock.rotation.set(Math.random(), Math.random(), Math.random());
-  rock.castShadow = true; rock.receiveShadow = true;
-  addOutline(rock, 0.05);
-  scene.add(rock);
-  if (rr > 0.9) colliders.push({ x, z, r: rr * 0.85 });   // sadece büyük kayalar
-}
 
 // ---- Biyolüminesan flora (gece parlar) --------------------------------
 function makeCrystalGeo() {
@@ -1814,7 +1943,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v82 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v83 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
@@ -2549,6 +2678,7 @@ function update(dt) {
 
   // Rüzgârda hafif salınım (ağaçlar + çalılar)
   elapsed += dt;
+  windUniform.value = elapsed;                  // instanced orman rüzgârı (shader)
   for (let i = 0; i < trees.children.length; i++) {
     const t = trees.children[i];
     t.rotation.z = Math.sin(elapsed * 1.1 + i * 0.7) * 0.025;
