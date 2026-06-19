@@ -30,7 +30,7 @@ document.getElementById('app').appendChild(renderer.domElement);
 
 // ---- Scene & atmosphere -----------------------------------------------
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog('#cfe6e0', 90, 340);
+scene.fog = new THREE.Fog('#cfe6e0', 90, 384);
 
 // Gökyüzü (three.js Sky) — günün saati setTimeOfDay() ile ayarlanır
 const SUN_DIR = new THREE.Vector3();
@@ -127,7 +127,7 @@ function roughen(geo, amount = 0.12) {
 }
 
 // ---- Zemin (yumuşak tepeler) ------------------------------------------
-const WORLD = 260;
+const WORLD = 300;        // dünya boyutu — kademeli büyütülüyor (instancing sayesinde ucuz)
 const colliders = [];                          // {x, z, r} — katı engeller (çarpışma)
 const glowMats = [];                           // gece parlayan malzemeler {mat, base, phase}
 const lilies = [];                             // göl nilüferleri (hafif salınır)
@@ -143,7 +143,7 @@ function heightAt(x, z) {
        + Math.sin(x * 0.21 + z * 0.13) * 0.45      // ince elle çizilmiş tümsekler
        + Math.cos(x * 0.37 - z * 0.29) * 0.28;
 }
-const groundGeo = new THREE.PlaneGeometry(WORLD, WORLD, 120, 120);
+const groundGeo = new THREE.PlaneGeometry(WORLD, WORLD, 138, 138);
 groundGeo.rotateX(-Math.PI / 2);
 {
   const pos = groundGeo.attributes.position;
@@ -894,7 +894,7 @@ function scatterGrass(count = 4000) {
   mesh.instanceMatrix.needsUpdate = true;
   return mesh;
 }
-scene.add(scatterGrass(6500));
+scene.add(scatterGrass(8600));
 
 // ---- Çiçekler (sap + göbek + yapraklar, vertex renkli) ----------------
 function paintGeo(geo, hex) {
@@ -938,7 +938,7 @@ function scatterFlowers(petalHex, count) {
   mesh.count = n; mesh.instanceMatrix.needsUpdate = true;
   return mesh;
 }
-['#ff7aa2', '#ffe14d', '#ffffff', '#b88cff', '#ff9e5e'].forEach((c) => scene.add(scatterFlowers(c, 120)));
+['#ff7aa2', '#ffe14d', '#ffffff', '#b88cff', '#ff9e5e'].forEach((c) => scene.add(scatterFlowers(c, 160)));
 
 // ---- Kelebekler -------------------------------------------------------
 const butterflies = [];
@@ -1443,7 +1443,7 @@ function makeBush() {
 const trees = new THREE.Group();
 const _appleGeo = new THREE.SphereGeometry(0.16, 8, 7);
 const _appleMat = toon('#e23b2e');
-for (let i = 0; i < 110; i++) {
+for (let i = 0; i < 145; i++) {
   const x = (Math.random() - 0.5) * (WORLD - 24);
   const z = (Math.random() - 0.5) * (WORLD - 24);
   if (Math.abs(x) < 7 || nearBuilt(x, z, 3)) continue;
@@ -1466,7 +1466,7 @@ for (let i = 0; i < 110; i++) {
     appleTrees.push({ x, z, apples, regrow: 0, pickCd: 0 });
   }
 }
-for (let i = 0; i < 40; i++) {                 // çalılar
+for (let i = 0; i < 54; i++) {                 // çalılar
   const x = (Math.random() - 0.5) * (WORLD - 18);
   const z = (Math.random() - 0.5) * (WORLD - 18);
   if (Math.abs(x) < 5 || nearBuilt(x, z, 1)) continue;
@@ -1478,7 +1478,7 @@ for (let i = 0; i < 40; i++) {                 // çalılar
 scene.add(trees);
 
 // ---- Kayalar -----------------------------------------------------------
-for (let i = 0; i < 40; i++) {
+for (let i = 0; i < 54; i++) {
   const x = (Math.random() - 0.5) * (WORLD - 20);
   const z = (Math.random() - 0.5) * (WORLD - 20);
   if (nearBuilt(x, z, 2)) continue;
@@ -1531,10 +1531,10 @@ function scatterGlow(geo, baseHex, glowHex, count, glowBase) {
   scene.add(mesh);
   glowMats.push({ mat, base: glowBase, phase: Math.random() * 6.28 });
 }
-scatterGlow(makeCrystalGeo(), '#1d5e74', '#3fe3ff', 90, 1.5);      // mavi kristal
-scatterGlow(makeCrystalGeo(), '#3a2a66', '#b06bff', 70, 1.5);      // mor kristal
-scatterGlow(makeGlowMushroomGeo(), '#2a6b4a', '#65ff9e', 80, 1.2); // yeşil mantar
-scatterGlow(makeGlowMushroomGeo(), '#6b2a55', '#ff6bd0', 60, 1.2); // pembe mantar
+scatterGlow(makeCrystalGeo(), '#1d5e74', '#3fe3ff', 118, 1.5);     // mavi kristal
+scatterGlow(makeCrystalGeo(), '#3a2a66', '#b06bff', 92, 1.5);      // mor kristal
+scatterGlow(makeGlowMushroomGeo(), '#2a6b4a', '#65ff9e', 104, 1.2);// yeşil mantar
+scatterGlow(makeGlowMushroomGeo(), '#6b2a55', '#ff6bd0', 78, 1.2); // pembe mantar
 
 // ---- Evler (Ghibli kasabası) ------------------------------------------
 function makeHouse(bodyColor, roofColor, opts = {}) {
@@ -1814,7 +1814,7 @@ function emote(name) {
   }
 }
 const statusEl = document.getElementById('status');
-const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v81 · ' + msg; statusEl.className = cls; } };
+const setStatus = (msg, cls = '') => { if (statusEl) { statusEl.textContent = 'v82 · ' + msg; statusEl.className = cls; } };
 {
   // Model dosyaları npm paketinde YOK; doğrudan three.js GitHub deposundan çekiyoruz.
   const MODEL_URLS = [
